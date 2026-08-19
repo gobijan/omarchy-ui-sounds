@@ -2,6 +2,8 @@
 
 Theme-aware window and workspace clicks for [Omarchy](https://omarchy.org/).
 
+![Window sounds](media/window-sounds.mp4)
+
 This is an Omarchy **shell plugin**, not a theme and not a standalone daemon. That is the distribution channel Omarchy already has: a git repo with a `manifest.json`, installed by `omarchy plugin add`.
 
 ```bash
@@ -76,6 +78,10 @@ pack=quake
 `pack=quake` is a shipped 90s-FPS homage (original synthesis, not ripped game files). Clear it or set `pack=theme` to follow the Omarchy theme palette instead.
 
 ## Control
+
+Super menu → **Trigger → Toggle → Interface Sounds**:
+
+![Toggle Interface Sounds](media/toggle-interface-sounds.png)
 
 ```bash
 omarchy-shell ui-sounds status
