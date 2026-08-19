@@ -31,8 +31,11 @@ Item {
   readonly property real volume: Number(config.volume || 0)
 
   function applyConfig(text) {
+    var previousPack = root.config.pack || ""
     root.configText = text || ""
     root.config = Sounds.parseConfig(text)
+    if (root.pluginDir && (root.config.pack || "") !== previousPack)
+      generatePack(root.themeName, false)
   }
 
   function applyThemeName(text) {
@@ -75,6 +78,8 @@ Item {
     var args = ["/usr/bin/python3", root.pluginDir + "/generate.py"]
     if (force)
       args.push("--force")
+    if (root.config.pack)
+      args.push("--pack", root.config.pack)
     args.push(theme)
     root.generating = true
     generateProcess.command = args
@@ -142,6 +147,7 @@ Item {
       enabled: root.enabled,
       volume: root.volume,
       theme: root.themeName,
+      pack: root.config.pack || "",
       pluginDir: root.pluginDir,
       generating: root.generating,
       sounds: root.soundIndex
@@ -238,6 +244,16 @@ Item {
     function generate(): string {
       root.generatePack(root.themeName, true)
       return root.themeName
+    }
+
+    function pack(name: string): string {
+      var next = String(name || "").trim().toLowerCase()
+      if (next === "theme" || next === "auto" || next === "off")
+        next = ""
+      var text = Sounds.setPackInConfig(root.configText || "enabled=true\nvolume=0.38\n", next)
+      configFile.setText(text)
+      root.applyConfig(text)
+      return next || "theme"
     }
   }
 }

@@ -11,11 +11,15 @@ import wave
 from pathlib import Path
 
 HOME = Path.home()
+PLUGIN_DIR = Path(__file__).resolve().parent
 DEFAULT_DIR = HOME / ".config/omarchy/sounds/default"
 GENERATED_DIR = HOME / ".config/omarchy/sounds/generated"
 USER_THEMES = HOME / ".config/omarchy/themes"
+USER_PACKS = HOME / ".config/omarchy/sounds/packs"
+PLUGIN_PACKS = PLUGIN_DIR / "packs"
 CURRENT_THEME_DIR = HOME / ".local/state/omarchy/current/theme"
 CURRENT_THEME_NAME = HOME / ".local/state/omarchy/current/theme.name"
+LOFI_RATE = 11025
 
 SAMPLE_RATE = 44100
 SOUND_EXTS = (".wav", ".ogg", ".oga", ".mp3", ".flac", ".opus")
@@ -183,6 +187,152 @@ def recipes(palette: Palette) -> dict[str, list[float]]:
     }
 
 
+def _noise(index: int, seed: int) -> float:
+    return ((index * 1103515245 + seed) & 0x7FFFFFFF) / 0x7FFFFFFF * 2.0 - 1.0
+
+
+def _one_pole(samples: list[float], cutoff: float, rate: int) -> list[float]:
+    coeff = 1.0 - math.exp(-2.0 * math.pi * cutoff / rate)
+    out: list[float] = []
+    acc = 0.0
+    for sample in samples:
+        acc += coeff * (sample - acc)
+        out.append(acc)
+    return out
+
+
+def _bitcrush(samples: list[float], bits: int = 8) -> list[float]:
+    levels = float(1 << (bits - 1))
+    return [round(sample * levels) / levels for sample in samples]
+
+
+def _upsample(samples: list[float], factor: int) -> list[float]:
+    out: list[float] = []
+    for sample in samples:
+        out.extend([sample] * factor)
+    return out
+
+
+def _mix(base: list[float], extra: list[float], offset: int) -> list[float]:
+    needed = offset + len(extra)
+    if needed > len(base):
+        base.extend([0.0] * (needed - len(base)))
+    for i, sample in enumerate(extra):
+        base[offset + i] += sample
+    return base
+
+
+def _square(t: float, freq: float, duty: float = 0.5) -> float:
+    return 1.0 if (t * freq) % 1.0 < duty else -1.0
+
+
+def _quake_tone(freq: float, duration: float, volume: float, decay: float, duty: float = 0.42) -> list[float]:
+    n = max(1, int(LOFI_RATE * duration))
+    samples = [0.0] * n
+    for i in range(n):
+        t = i / LOFI_RATE
+        env = min(1.0, i / max(1, int(LOFI_RATE * 0.002))) * math.exp(-t * decay)
+        tone = 0.72 * _square(t, freq, duty) + 0.28 * math.sin(2.0 * math.pi * freq * t)
+        samples[i] = math.tanh(tone * 1.35) * env * volume
+    return samples
+
+
+def _quake_noise(duration: float, volume: float, cutoff: float, seed: int) -> list[float]:
+    n = max(1, int(LOFI_RATE * duration))
+    raw = [_noise(i, seed) * volume * math.exp(-i / LOFI_RATE * 28.0) for i in range(n)]
+    return _one_pole(raw, cutoff, LOFI_RATE)
+
+
+def _quake_finish(samples: list[float]) -> list[float]:
+    crushed = _bitcrush(samples, 8)
+    return _upsample(crushed, SAMPLE_RATE // LOFI_RATE)
+
+
+def quake_recipes() -> dict[str, list[float]]:
+    # Original homage, not ripped Quake samples: 11kHz, 8-bit, metallic/digital.
+    openwindow = _quake_tone(620, 0.04, 0.28, 26.0)
+    _mix(openwindow, _quake_tone(930, 0.055, 0.3, 22.0), int(LOFI_RATE * 0.032))
+    _mix(openwindow, _quake_noise(0.018, 0.18, 2800, 17), 0)
+
+    closewindow = _quake_tone(78, 0.07, 0.42, 18.0, duty=0.5)
+    _mix(closewindow, _quake_noise(0.07, 0.34, 420, 91), 0)
+    _mix(closewindow, _quake_tone(210, 0.03, 0.16, 40.0), int(LOFI_RATE * 0.008))
+
+    workspace = []
+    n = int(LOFI_RATE * 0.09)
+    for i in range(n):
+        t = i / LOFI_RATE
+        freq = 280.0 + 2100.0 * (t / 0.09) ** 0.7
+        env = min(1.0, i / max(1, int(LOFI_RATE * 0.004))) * (1.0 - t / 0.09)
+        zap = 0.55 * _square(t, freq, 0.3) + 0.2 * _noise(i, 3)
+        workspace.append(math.tanh(zap * 1.5) * env * 0.3)
+    _mix(workspace, _quake_noise(0.02, 0.22, 3200, 5), 0)
+
+    fullscreen = []
+    n = int(LOFI_RATE * 0.11)
+    for i in range(n):
+        t = i / LOFI_RATE
+        freq = 180.0 * (2.4 ** (t / 0.11))
+        env = min(1.0, i / max(1, int(LOFI_RATE * 0.006))) * math.exp(-t * 8.0)
+        fullscreen.append(math.tanh(_square(t, freq, 0.38) * 1.2) * env * 0.26)
+    _mix(fullscreen, _quake_tone(140, 0.04, 0.18, 20.0), 0)
+
+    unfullscreen = []
+    n = int(LOFI_RATE * 0.09)
+    for i in range(n):
+        t = i / LOFI_RATE
+        freq = 900.0 * (0.35 ** (t / 0.09))
+        env = min(1.0, i / max(1, int(LOFI_RATE * 0.004))) * math.exp(-t * 10.0)
+        unfullscreen.append(math.tanh(_square(t, freq, 0.4) * 1.1) * env * 0.24)
+
+    menu = _quake_tone(1680, 0.028, 0.22, 48.0, duty=0.28)
+    _mix(menu, _quake_noise(0.01, 0.16, 4000, 44), 0)
+
+    unfloat = _quake_tone(1120, 0.026, 0.2, 50.0, duty=0.28)
+    _mix(unfloat, _quake_noise(0.008, 0.12, 3000, 45), 0)
+
+    minimize = []
+    n = int(LOFI_RATE * 0.08)
+    for i in range(n):
+        t = i / LOFI_RATE
+        freq = 1600.0 - 1200.0 * (t / 0.08)
+        env = min(1.0, i / max(1, int(LOFI_RATE * 0.003))) * math.exp(-t * 14.0)
+        minimize.append((_square(t, freq, 0.32) * 0.7 + _noise(i, 9) * 0.15) * env * 0.24)
+
+    urgent = _quake_tone(310, 0.07, 0.28, 14.0, duty=0.22)
+    _mix(urgent, _quake_noise(0.03, 0.2, 1800, 77), 0)
+
+    bell = _quake_tone(880, 0.045, 0.22, 20.0)
+    _mix(bell, _quake_tone(1320, 0.07, 0.2, 16.0), int(LOFI_RATE * 0.03))
+
+    return {
+        "openwindow": _quake_finish(openwindow),
+        "closewindow": _quake_finish(closewindow),
+        "workspace": _quake_finish(workspace),
+        "fullscreen": _quake_finish(fullscreen),
+        "unfullscreen": _quake_finish(unfullscreen),
+        "float": _quake_finish(menu),
+        "unfloat": _quake_finish(unfloat),
+        "minimize": _quake_finish(minimize),
+        "urgent": _quake_finish(urgent),
+        "bell": _quake_finish(bell),
+    }
+
+
+def generate_named_pack(name: str, force: bool = False) -> Path:
+    dest = PLUGIN_PACKS / name
+    dest.mkdir(parents=True, exist_ok=True)
+    recipes_for = {"quake": quake_recipes}
+    if name not in recipes_for:
+        raise SystemExit(f"unknown sound pack: {name}")
+    for event, samples in recipes_for[name]().items():
+        path = dest / f"{event}.wav"
+        if path.exists() and not force:
+            continue
+        write_wav(path, samples)
+    return dest
+
+
 def generate_pack(theme: str, force: bool = False) -> Path:
     if theme in {"", "default"}:
         dest = DEFAULT_DIR
@@ -199,13 +349,14 @@ def generate_pack(theme: str, force: bool = False) -> Path:
     return dest
 
 
-def resolve_sound(event: str, theme: str) -> str:
+def resolve_sound(event: str, theme: str, pack: str = "") -> str:
     search = [
         USER_THEMES / theme / "sounds",
         CURRENT_THEME_DIR / "sounds",
-        GENERATED_DIR / theme,
-        DEFAULT_DIR,
     ]
+    if pack and pack not in {"theme", "auto", "default"}:
+        search.extend([USER_PACKS / pack, PLUGIN_PACKS / pack])
+    search.extend([GENERATED_DIR / theme, DEFAULT_DIR])
     for directory in search:
         for ext in SOUND_EXTS:
             path = directory / f"{event}{ext}"
@@ -214,21 +365,33 @@ def resolve_sound(event: str, theme: str) -> str:
     return ""
 
 
-def resolve_all(theme: str) -> dict[str, str]:
-    return {event: resolve_sound(event, theme) for event in EVENTS}
+def resolve_all(theme: str, pack: str = "") -> dict[str, str]:
+    return {event: resolve_sound(event, theme, pack) for event in EVENTS}
+
+
+def parse_pack(argv: list[str]) -> str:
+    if "--pack" in argv:
+        index = argv.index("--pack")
+        if index + 1 < len(argv):
+            return argv[index + 1].strip().lower()
+    return ""
 
 
 def main(argv: list[str]) -> int:
     force = "--force" in argv
-    args = [a for a in argv if not a.startswith("-")]
+    pack = parse_pack(argv)
+    args = [a for a in argv if not a.startswith("-") and a != pack]
+    # Drop the value that belonged to --pack if it was left in args.
     command = args[0] if args and args[0] in {"generate", "list"} else "generate"
     theme = next((a for a in args if a not in {"generate", "list"}), current_theme())
 
     if command != "list":
+        if pack and pack not in {"theme", "auto", "default"}:
+            generate_named_pack(pack, force=force)
         generate_pack("default", force=force)
         generate_pack(theme, force=force)
 
-    print(json.dumps(resolve_all(theme), separators=(",", ":")))
+    print(json.dumps(resolve_all(theme, pack), separators=(",", ":")))
     return 0
 
 

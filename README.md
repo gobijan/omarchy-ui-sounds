@@ -52,8 +52,9 @@ Lookup order:
 
 1. `~/.config/omarchy/themes/<theme>/sounds/`
 2. the active theme's staged copy
-3. a generated pack tinted from that theme's `colors.toml`
-4. `~/.config/omarchy/sounds/default/`
+3. a named pack (`pack=quake` → `packs/quake/` in the plugin, or `~/.config/omarchy/sounds/packs/quake/`)
+4. a generated pack tinted from that theme's `colors.toml`
+5. `~/.config/omarchy/sounds/default/`
 
 Formats: `wav`, `ogg`, `oga`, `mp3`, `flac`, `opus`. Generated clicks are 44.1 kHz mono WAV.
 
@@ -68,8 +69,11 @@ enabled=true
 volume=0.38
 startup_grace_ms=1500
 burst_ms=140
+pack=quake
 # event.urgent=false
 ```
+
+`pack=quake` is a shipped 90s-FPS homage (original synthesis, not ripped game files). Clear it or set `pack=theme` to follow the Omarchy theme palette instead.
 
 ## Control
 
@@ -77,6 +81,8 @@ burst_ms=140
 omarchy-shell ui-sounds status
 omarchy-shell ui-sounds toggle
 omarchy-shell ui-sounds play openwindow
+omarchy-shell ui-sounds pack quake
+omarchy-shell ui-sounds pack theme
 omarchy-shell ui-sounds generate
 ```
 

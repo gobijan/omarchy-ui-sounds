@@ -40,6 +40,7 @@ function defaultConfig() {
     volume: 0.38,
     startup_grace_ms: 1500,
     burst_ms: 140,
+    pack: "",
     events: {}
   }
 }
@@ -66,27 +67,37 @@ function parseConfig(text) {
       cfg.startup_grace_ms = Math.max(0, parseInt(value, 10) || 0)
     else if (key === "burst_ms")
       cfg.burst_ms = Math.max(0, parseInt(value, 10) || 0)
+    else if (key === "pack")
+      cfg.pack = value.replace(/[^a-z0-9_-]/gi, "").toLowerCase()
     else if (key.indexOf("event.") === 0)
       cfg.events[key.slice(6)] = parseBool(value)
   })
   return cfg
 }
 
-function setEnabledInConfig(text, enabled) {
+function setKeyInConfig(text, key, value) {
   var written = false
   var lines = String(text || "").split("\n")
   for (var i = 0; i < lines.length; i++) {
-    if (lines[i].replace(/^\s+/, "").indexOf("enabled=") === 0) {
-      lines[i] = "enabled=" + (enabled ? "true" : "false")
+    if (lines[i].replace(/^\s+/, "").indexOf(key + "=") === 0) {
+      lines[i] = key + "=" + value
       written = true
     }
   }
   if (!written)
-    lines.unshift("enabled=" + (enabled ? "true" : "false"))
+    lines.push(key + "=" + value)
   var out = lines.join("\n")
   if (out.length && out.charAt(out.length - 1) !== "\n")
     out += "\n"
   return out
+}
+
+function setEnabledInConfig(text, enabled) {
+  return setKeyInConfig(text, "enabled", enabled ? "true" : "false")
+}
+
+function setPackInConfig(text, pack) {
+  return setKeyInConfig(text || "enabled=true\nvolume=0.38\n", "pack", pack)
 }
 
 function eventParts(event, count) {
