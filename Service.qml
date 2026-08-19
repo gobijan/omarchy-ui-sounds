@@ -40,10 +40,13 @@ Item {
 
   function applyThemeName(text) {
     var name = String(text || "").trim() || "default"
-    if (name === root.themeName && Object.keys(root.soundIndex).length)
+    if (name === root.themeName) {
+      if (!Object.keys(root.soundIndex).length)
+        generatePack(name, false)
       return
+    }
     root.themeName = name
-    generatePack(name, true)
+    generatePack(name, false)
   }
 
   function writeEnabled(value) {

@@ -319,8 +319,8 @@ def quake_recipes() -> dict[str, list[float]]:
     }
 
 
-def generate_named_pack(name: str, force: bool = False) -> Path:
-    dest = PLUGIN_PACKS / name
+def generate_named_pack(name: str, force: bool = False, in_tree: bool = False) -> Path:
+    dest = (PLUGIN_PACKS if in_tree else USER_PACKS) / name
     dest.mkdir(parents=True, exist_ok=True)
     recipes_for = {"quake": quake_recipes}
     if name not in recipes_for:
@@ -387,7 +387,7 @@ def main(argv: list[str]) -> int:
 
     if command != "list":
         if pack and pack not in {"theme", "auto", "default"}:
-            generate_named_pack(pack, force=force)
+            generate_named_pack(pack, force=force, in_tree="--in-tree" in argv)
         generate_pack("default", force=force)
         generate_pack(theme, force=force)
 
