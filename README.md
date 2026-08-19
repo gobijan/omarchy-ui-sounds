@@ -104,3 +104,7 @@ omarchy plugin validate /path/to/omarchy-ui-sounds
 ## Requirements
 
 Omarchy with `omarchy-shell` (Quickshell) and `qt6-multimedia`. Both ship with current Omarchy.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
