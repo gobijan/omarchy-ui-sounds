@@ -1,8 +1,8 @@
-# Omarchy interface sounds
+# Interface Sounds
 
 Theme-aware window and workspace clicks for [Omarchy](https://omarchy.org/).
 
-![Interface sounds](preview.png)
+![Interface Sounds](preview.png)
 
 https://github.com/user-attachments/assets/c0058d10-2226-4c89-8c99-6435877340ea
 
