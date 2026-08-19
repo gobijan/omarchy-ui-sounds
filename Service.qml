@@ -74,9 +74,14 @@ Item {
     generateProcess.running = true
   }
 
+  function soundPath(event) {
+    if (root.soundIndex[event])
+      return root.soundIndex[event]
+    return root.home + "/.config/omarchy/sounds/generated/" + root.themeName + "/" + event + ".wav"
+  }
+
   function soundUrl(event) {
-    var path = root.soundIndex[event] || ""
-    return Sounds.fileUrl(path)
+    return Sounds.fileUrl(soundPath(event))
   }
 
   function play(event) {
@@ -128,7 +133,7 @@ Item {
     id: players
     model: root.eventNames
     delegate: SoundEffect {
-      source: Sounds.fileUrl(root.soundIndex[modelData] || "")
+      source: Sounds.fileUrl(root.soundIndex[modelData] || (root.home + "/.config/omarchy/sounds/generated/" + root.themeName + "/" + modelData + ".wav"))
       volume: root.volume
     }
   }
@@ -136,12 +141,18 @@ Item {
   Process {
     id: generateProcess
     stdout: StdioCollector {
-      id: generateStdout
+      waitForEnd: true
+      onStreamFinished: {
+        root.applySoundIndex(text)
+        root.generating = false
+      }
+    }
+    stderr: StdioCollector {
       waitForEnd: true
     }
-    onExited: function() {
-      root.applySoundIndex(generateStdout.text)
-      root.generating = false
+    onExited: function(exitCode) {
+      if (exitCode !== 0)
+        root.generating = false
     }
   }
 
