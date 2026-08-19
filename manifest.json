@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "gobijan.ui-sounds",
-  "name": "Interface Sounds",
+  "name": "UI Sounds",
   "version": "1.4.0",
   "author": "gobijan",
   "description": "Theme-aware window and workspace sound effects for Omarchy",
