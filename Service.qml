@@ -22,6 +22,8 @@ Item {
   property string configText: ""
   property var soundIndex: ({})
   property bool generating: false
+  property string pendingTheme: ""
+  property bool pendingForce: false
   property double startedAt: Date.now()
   property var lastPlayed: ({})
 
@@ -62,15 +64,32 @@ Item {
   }
 
   function generatePack(theme, force) {
-    if (!root.pluginDir || generateProcess.running)
+    if (!root.pluginDir)
       return
+    theme = theme || root.themeName || "default"
+    if (generateProcess.running) {
+      root.pendingTheme = theme
+      root.pendingForce = root.pendingForce || !!force
+      return
+    }
     var args = ["/usr/bin/python3", root.pluginDir + "/generate.py"]
     if (force)
       args.push("--force")
-    args.push(theme || root.themeName || "default")
+    args.push(theme)
     root.generating = true
     generateProcess.command = args
     generateProcess.running = true
+  }
+
+  function finishGenerate() {
+    root.generating = false
+    if (!root.pendingTheme)
+      return
+    var theme = root.pendingTheme
+    var force = root.pendingForce
+    root.pendingTheme = ""
+    root.pendingForce = false
+    generatePack(theme, force)
   }
 
   function soundPath(event) {
@@ -144,7 +163,7 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         root.applySoundIndex(text)
-        root.generating = false
+        root.finishGenerate()
       }
     }
     stderr: StdioCollector {
@@ -152,7 +171,7 @@ Item {
     }
     onExited: function(exitCode) {
       if (exitCode !== 0)
-        root.generating = false
+        root.finishGenerate()
     }
   }
 
