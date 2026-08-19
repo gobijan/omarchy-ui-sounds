@@ -64,18 +64,47 @@ If a theme has no `sounds/` directory, the plugin synthesizes a pack from the th
 
 ## Config
 
-`~/.config/omarchy/sounds/config` is created on first run:
+`~/.config/omarchy/sounds/config` is created on first run. Edits apply immediately.
 
 ```ini
 enabled=true
-volume=0.38
-startup_grace_ms=1500
-burst_ms=140
-pack=quake
-# event.urgent=false
+volume=0.45
+startup_grace_ms=600
+burst_ms=100
+pack=
+event.urgent=false
+event.bell=false
 ```
 
-`pack=quake` is a shipped 90s-FPS homage (original synthesis, not ripped game files). Clear it or set `pack=theme` to follow the Omarchy theme palette instead.
+| Key | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | Master on/off. The Toggle menu and `omarchy-shell ui-sounds toggle` flip this. |
+| `volume` | `0.45` | Playback level from `0` (silent) to `1` (full). This is independent of the system output slider. `0.45` is present without jumping over music. |
+| `startup_grace_ms` | `600` | Milliseconds after the plugin starts during which no sounds play. Covers the burst of Hyprland events when the shell comes up, so login does not machine-gun clicks. |
+| `burst_ms` | `100` | Per-event cooldown. If the same event fires twice inside this window (compositor double-fires, session restore), only the first click plays. Two windows you open farther apart still get two sounds. |
+| `pack` | empty | Which sample set to use after theme overlays. Empty / `theme` / `auto` follows the Omarchy theme palette. `quake` is the shipped 90s-FPS homage (original synthesis, not ripped game files). |
+| `event.<name>` | on, except `urgent` and `bell` | Per-event mute. `false` skips that event even if a file exists. |
+
+Events you can set with `event.<name>`:
+
+| Event | When it plays |
+|---|---|
+| `openwindow` | A window opens |
+| `closewindow` | A window closes |
+| `workspace` | You switch workspaces |
+| `fullscreen` / `unfullscreen` | A window enters or leaves fullscreen |
+| `float` / `unfloat` | A window is floated or tiled |
+| `minimize` | A window is minimized |
+| `urgent` | A window requests attention (chat, browser). Off by default; some apps spam this. |
+| `bell` | An app rings the system bell. Off by default; terminals can fire it often. |
+
+Example: turn urgent alerts on, Quake pack, a bit louder:
+
+```ini
+volume=0.55
+pack=quake
+event.urgent=true
+```
 
 ## Control
 

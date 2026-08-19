@@ -50,7 +50,7 @@ Item {
   }
 
   function writeEnabled(value) {
-    var next = Sounds.setEnabledInConfig(root.configText || "enabled=true\nvolume=0.38\n", value)
+    var next = Sounds.setEnabledInConfig(root.configText || Sounds.DEFAULT_CONFIG_TEXT, value)
     configFile.setText(next)
     applyConfig(next)
   }
@@ -191,7 +191,7 @@ Item {
     printErrors: false
     onLoaded: root.applyConfig(text())
     onLoadFailed: function() {
-      var seed = "enabled=true\nvolume=0.38\nstartup_grace_ms=1500\nburst_ms=140\n"
+      var seed = Sounds.DEFAULT_CONFIG_TEXT
       setText(seed)
       root.applyConfig(seed)
     }
@@ -253,7 +253,7 @@ Item {
       var next = String(name || "").trim().toLowerCase()
       if (next === "theme" || next === "auto" || next === "off")
         next = ""
-      var text = Sounds.setPackInConfig(root.configText || "enabled=true\nvolume=0.38\n", next)
+      var text = Sounds.setPackInConfig(root.configText || Sounds.DEFAULT_CONFIG_TEXT, next)
       configFile.setText(text)
       root.applyConfig(text)
       return next || "theme"

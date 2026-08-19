@@ -34,14 +34,28 @@ var IGNORE_CLASSES = {
 
 var SOUND_EXTS = [".wav", ".ogg", ".oga", ".mp3", ".flac", ".opus"]
 
+var DEFAULT_CONFIG_TEXT = [
+  "enabled=true",
+  "volume=0.45",
+  "startup_grace_ms=600",
+  "burst_ms=100",
+  "pack=",
+  "event.urgent=false",
+  "event.bell=false",
+  ""
+].join("\n")
+
 function defaultConfig() {
   return {
     enabled: true,
-    volume: 0.38,
-    startup_grace_ms: 1500,
-    burst_ms: 140,
+    volume: 0.45,
+    startup_grace_ms: 600,
+    burst_ms: 100,
     pack: "",
-    events: {}
+    events: {
+      urgent: false,
+      bell: false
+    }
   }
 }
 
@@ -97,7 +111,7 @@ function setEnabledInConfig(text, enabled) {
 }
 
 function setPackInConfig(text, pack) {
-  return setKeyInConfig(text || "enabled=true\nvolume=0.38\n", "pack", pack)
+  return setKeyInConfig(text || DEFAULT_CONFIG_TEXT, "pack", pack)
 }
 
 function eventParts(event, count) {
