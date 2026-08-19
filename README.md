@@ -2,7 +2,7 @@
 
 Theme-aware window and workspace clicks for [Omarchy](https://omarchy.org/).
 
-![Window sounds](media/window-sounds.mp4)
+https://github.com/user-attachments/assets/cb550907-31f1-4662-bdcc-0a8de3383c06
 
 This is an Omarchy **shell plugin**, not a theme and not a standalone daemon. That is the distribution channel Omarchy already has: a git repo with a `manifest.json`, installed by `omarchy plugin add`.
 
