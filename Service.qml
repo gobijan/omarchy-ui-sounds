@@ -64,12 +64,11 @@ Item {
   function generatePack(theme, force) {
     if (!root.pluginDir || generateProcess.running)
       return
-    var args = ["python3", root.pluginDir + "/generate.py"]
+    var args = ["/usr/bin/python3", root.pluginDir + "/generate.py"]
     if (force)
       args.push("--force")
     args.push(theme || root.themeName || "default")
     root.generating = true
-    generateStdout.text = ""
     generateProcess.command = args
     generateProcess.running = true
   }
@@ -85,7 +84,7 @@ Item {
   }
 
   function play(event) {
-    if (!root.enabled || root.generating)
+    if (!root.enabled)
       return false
     if (root.config.events && root.config.events[event] === false)
       return false
@@ -125,6 +124,7 @@ Item {
       volume: root.volume,
       theme: root.themeName,
       pluginDir: root.pluginDir,
+      generating: root.generating,
       sounds: root.soundIndex
     })
   }
