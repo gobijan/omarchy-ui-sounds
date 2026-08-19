@@ -1,0 +1,19 @@
+digital — Kenney Digital Audio
+==============================
+
+Source: https://kenney.nl/assets/digital-audio
+Author: Kenney Vleugels (www.kenney.nl)
+License: CC0 1.0 Universal
+  https://creativecommons.org/publicdomain/zero/1.0/
+
+Mapping
+  Audio/twoTone1.ogg         openwindow
+  Audio/highDown.ogg         closewindow
+  Audio/pepSound1.ogg        workspace
+  Audio/phaserUp3.ogg        fullscreen
+  Audio/phaserDown1.ogg      unfullscreen
+  Audio/phaseJump1.ogg       float
+  Audio/phaseJump2.ogg       unfloat
+  Audio/lowDown.ogg          minimize
+  Audio/zap1.ogg             urgent
+  Audio/threeTone1.ogg       bell

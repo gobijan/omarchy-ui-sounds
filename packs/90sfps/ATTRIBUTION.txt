@@ -1,0 +1,7 @@
+90sfps — synthesized 90s-FPS homage
+===================================
+
+Original synthesis in generate.py (quake_recipes). Not ripped from
+id Software Quake. 11 kHz, 8-bit character, metallic/digital clicks.
+
+License: MIT (same as this plugin).

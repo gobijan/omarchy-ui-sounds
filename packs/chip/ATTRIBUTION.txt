@@ -1,0 +1,20 @@
+chip — 8-bit menu sounds
+========================
+
+Source: The Essential Retro Video Game Sound Effects Collection [512 sounds]
+Author: Juhani Junkala
+OpenGameArt: https://opengameart.org/content/512-sound-effects-8-bit-style
+License: CC0 1.0 Universal
+  https://creativecommons.org/publicdomain/zero/1.0/
+
+Mapping
+  General Sounds/Menu Sounds/sfx_menu_select1.wav        openwindow
+  General Sounds/Menu Sounds/sfx_menu_select2.wav        closewindow
+  General Sounds/Menu Sounds/sfx_menu_move1.wav          workspace
+  General Sounds/Pause Sounds/sfx_sounds_pause1_in.wav   fullscreen
+  General Sounds/Pause Sounds/sfx_sounds_pause1_out.wav  unfullscreen
+  General Sounds/Buttons/sfx_sounds_button6.wav          float
+  General Sounds/Buttons/sfx_sounds_button1.wav          unfloat
+  General Sounds/Negative Sounds/sfx_sounds_negative2.wav minimize
+  General Sounds/Negative Sounds/sfx_sounds_error1.wav   urgent
+  General Sounds/Coins/sfx_coin_single1.wav              bell

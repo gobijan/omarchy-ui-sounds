@@ -82,7 +82,7 @@ event.bell=false
 | `volume` | `0.45` | Playback level from `0` (silent) to `1` (full). This is independent of the system output slider. `0.45` is present without jumping over music. |
 | `startup_grace_ms` | `600` | Milliseconds after the plugin starts during which no sounds play. Covers the burst of Hyprland events when the shell comes up, so login does not machine-gun clicks. |
 | `burst_ms` | `100` | Per-event cooldown. If the same event fires twice inside this window (compositor double-fires, session restore), only the first click plays. Two windows you open farther apart still get two sounds. |
-| `pack` | empty | Which sample set to use after theme overlays. Empty / `theme` / `auto` follows the Omarchy theme palette. `quake` is the shipped 90s-FPS homage (original synthesis, not ripped game files). |
+| `pack` | empty | Which sample set to use after theme overlays. Empty / `theme` / `auto` follows the Omarchy theme palette. Named packs live in `packs/<name>/`. |
 | `event.<name>` | on, except `urgent` and `bell` | Per-event mute. `false` skips that event even if a file exists. |
 
 Events you can set with `event.<name>`:
@@ -97,6 +97,20 @@ Events you can set with `event.<name>`:
 | `minimize` | A window is minimized |
 | `urgent` | A window requests attention (chat, browser). Off by default; some apps spam this. |
 | `bell` | An app rings the system bell. Off by default; terminals can fire it often. |
+
+Shipped packs:
+
+| Pack | Character | Source | License |
+|---|---|---|---|
+| *(empty)* / `theme` | clicks tinted from the active theme | generated | MIT |
+| `quake` | LibreQuake menu, item, and talk sounds | [LibreQuake](https://github.com/lavenderdotpet/LibreQuake) | BSD-3-Clause |
+| `90sfps` | 90s-FPS homage (synthesized, not ripped) | this plugin | MIT |
+| `kenney` | clean modern UI clicks | [Kenney Interface Sounds](https://kenney.nl/assets/interface-sounds) | CC0 |
+| `digital` | arcade lasers and power-ups | [Kenney Digital Audio](https://kenney.nl/assets/digital-audio) | CC0 |
+| `chip` | 8-bit menu blips | [Juhani Junkala 512 SFX](https://opengameart.org/content/512-sound-effects-8-bit-style) | CC0 |
+| `scifi` | airlock doors, lasers, force fields | [Kenney Sci-fi Sounds](https://kenney.nl/assets/sci-fi-sounds) | CC0 |
+
+Original id Software Quake samples are not shipped. `quake` is the legal remake from LibreQuake. Each pack has `ATTRIBUTION.txt`.
 
 Example: turn urgent alerts on, Quake pack, a bit louder:
 
@@ -113,13 +127,20 @@ Super menu → **Trigger → Toggle → Interface Sounds**:
 ![Toggle Interface Sounds](media/toggle-interface-sounds.png)
 
 ```bash
+omarchy-shell ui-sounds help
 omarchy-shell ui-sounds status
-omarchy-shell ui-sounds toggle
-omarchy-shell ui-sounds play openwindow
+omarchy-shell ui-sounds packs
+omarchy-shell ui-sounds themes
+omarchy-shell ui-sounds events
 omarchy-shell ui-sounds pack quake
+omarchy-shell ui-sounds pack kenney
 omarchy-shell ui-sounds pack theme
+omarchy-shell ui-sounds play openwindow
+omarchy-shell ui-sounds toggle
 omarchy-shell ui-sounds generate
 ```
+
+`help`, `status`, `packs`, `themes`, and `events` print a list. `json` is the machine-readable snapshot. `pack list` is the same as `packs`. An unknown pack or event name prints the list instead of failing silently.
 
 ## Local development
 

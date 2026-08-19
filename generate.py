@@ -19,6 +19,8 @@ USER_PACKS = HOME / ".config/omarchy/sounds/packs"
 PLUGIN_PACKS = PLUGIN_DIR / "packs"
 CURRENT_THEME_DIR = HOME / ".local/state/omarchy/current/theme"
 CURRENT_THEME_NAME = HOME / ".local/state/omarchy/current/theme.name"
+SYSTEM_THEMES = Path("/usr/share/omarchy/themes")
+CATALOG_PATH = HOME / ".config/omarchy/sounds/catalog.json"
 LOFI_RATE = 11025
 
 SAMPLE_RATE = 44100
@@ -35,6 +37,42 @@ EVENTS = (
     "urgent",
     "bell",
 )
+
+PACK_SUMMARIES = {
+    "theme": "Follow the active Omarchy theme palette",
+    "quake": "LibreQuake menu and item remakes",
+    "90sfps": "Synthesized 90s-FPS homage",
+    "kenney": "Clean modern UI clicks",
+    "digital": "Arcade lasers and power-ups",
+    "chip": "8-bit menu blips",
+    "scifi": "Airlock doors, lasers, force fields",
+}
+
+EVENT_SUMMARIES = {
+    "openwindow": "A window opens",
+    "closewindow": "A window closes",
+    "workspace": "Workspace switch",
+    "fullscreen": "A window enters fullscreen",
+    "unfullscreen": "A window leaves fullscreen",
+    "float": "A window is floated",
+    "unfloat": "A window is tiled",
+    "minimize": "A window is minimized",
+    "urgent": "A window requests attention",
+    "bell": "An app rings the system bell",
+}
+
+USAGE = """\
+Usage: generate.py [<command>] [--pack NAME] [--force] [--in-tree] [theme]
+
+Commands:
+  generate   Write samples and print resolved paths (default)
+  list       Print resolved paths without writing
+  packs      Print available pack names as JSON
+  info       Print packs, themes, and events as JSON
+  help       Show this help
+
+Pack names: theme, quake, 90sfps, kenney, digital, chip, scifi
+"""
 
 
 def current_theme() -> str:
@@ -319,18 +357,100 @@ def quake_recipes() -> dict[str, list[float]]:
     }
 
 
-def generate_named_pack(name: str, force: bool = False, in_tree: bool = False) -> Path:
-    dest = (PLUGIN_PACKS if in_tree else USER_PACKS) / name
-    dest.mkdir(parents=True, exist_ok=True)
-    recipes_for = {"quake": quake_recipes}
-    if name not in recipes_for:
-        raise SystemExit(f"unknown sound pack: {name}")
-    for event, samples in recipes_for[name]().items():
-        path = dest / f"{event}.wav"
-        if path.exists() and not force:
+def pack_has_sounds(directory: Path) -> bool:
+    if not directory.is_dir():
+        return False
+    names = {path.stem for path in directory.iterdir() if path.suffix.lower() in SOUND_EXTS}
+    return bool(names & set(EVENTS))
+
+
+def shipped_packs() -> list[str]:
+    names = {"90sfps"}
+    for root in (PLUGIN_PACKS, USER_PACKS):
+        if not root.is_dir():
             continue
-        write_wav(path, samples)
-    return dest
+        for path in root.iterdir():
+            if path.is_dir() and pack_has_sounds(path):
+                names.add(path.name)
+    return sorted(names)
+
+
+def pack_path(name: str) -> str:
+    user_pack = USER_PACKS / name
+    plugin_pack = PLUGIN_PACKS / name
+    if pack_has_sounds(user_pack):
+        return str(user_pack)
+    if pack_has_sounds(plugin_pack):
+        return str(plugin_pack)
+    return ""
+
+
+def describe_packs() -> list[dict[str, str]]:
+    rows = [{"name": "theme", "summary": PACK_SUMMARIES["theme"], "path": ""}]
+    for name in shipped_packs():
+        rows.append({
+            "name": name,
+            "summary": PACK_SUMMARIES.get(name, "Custom pack"),
+            "path": pack_path(name),
+        })
+    return rows
+
+
+def list_omarchy_themes() -> list[dict[str, object]]:
+    found: dict[str, dict[str, object]] = {}
+    for root in (USER_THEMES, SYSTEM_THEMES):
+        if not root.is_dir():
+            continue
+        for path in sorted(root.iterdir()):
+            if not path.is_dir() or path.name.startswith("."):
+                continue
+            sounds_dir = path / "sounds"
+            has_sounds = pack_has_sounds(sounds_dir)
+            previous = found.get(path.name)
+            if previous and previous.get("sounds") and not has_sounds:
+                continue
+            found[path.name] = {
+                "name": path.name,
+                "path": str(path),
+                "sounds": has_sounds,
+            }
+    return [found[name] for name in sorted(found)]
+
+
+def catalog() -> dict[str, object]:
+    theme = current_theme()
+    return {
+        "theme": theme,
+        "packs": describe_packs(),
+        "themes": list_omarchy_themes(),
+        "events": [{"name": name, "summary": EVENT_SUMMARIES.get(name, "")} for name in EVENTS],
+    }
+
+
+def write_catalog() -> None:
+    CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CATALOG_PATH.write_text(json.dumps(catalog(), indent=2) + "\n", encoding="utf-8")
+
+
+def generate_named_pack(name: str, force: bool = False, in_tree: bool = False) -> Path:
+    recipes_for = {"90sfps": quake_recipes}
+    if name in recipes_for:
+        dest = (PLUGIN_PACKS if in_tree else USER_PACKS) / name
+        dest.mkdir(parents=True, exist_ok=True)
+        for event, samples in recipes_for[name]().items():
+            path = dest / f"{event}.wav"
+            if path.exists() and not force:
+                continue
+            write_wav(path, samples)
+        return dest
+    user_pack = USER_PACKS / name
+    plugin_pack = PLUGIN_PACKS / name
+    if pack_has_sounds(user_pack):
+        return user_pack
+    if pack_has_sounds(plugin_pack):
+        return plugin_pack
+    known = ", ".join(shipped_packs()) or "none"
+    raise SystemExit(f"unknown sound pack: {name} (available: {known})")
 
 
 def generate_pack(theme: str, force: bool = False) -> Path:
@@ -378,18 +498,37 @@ def parse_pack(argv: list[str]) -> str:
 
 
 def main(argv: list[str]) -> int:
+    if "-h" in argv or "--help" in argv:
+        print(USAGE, end="")
+        return 0
+
     force = "--force" in argv
     pack = parse_pack(argv)
     args = [a for a in argv if not a.startswith("-") and a != pack]
     # Drop the value that belonged to --pack if it was left in args.
-    command = args[0] if args and args[0] in {"generate", "list"} else "generate"
-    theme = next((a for a in args if a not in {"generate", "list"}), current_theme())
+    commands = {"generate", "list", "packs", "info", "help"}
+    command = args[0] if args and args[0] in commands else "generate"
+    theme = next((a for a in args if a not in commands), current_theme())
+
+    if command == "help":
+        print(USAGE, end="")
+        return 0
+
+    if command == "packs":
+        print(json.dumps(shipped_packs(), separators=(",", ":")))
+        return 0
+
+    if command == "info":
+        write_catalog()
+        print(json.dumps(catalog(), separators=(",", ":")))
+        return 0
 
     if command != "list":
         if pack and pack not in {"theme", "auto", "default"}:
             generate_named_pack(pack, force=force, in_tree="--in-tree" in argv)
         generate_pack("default", force=force)
         generate_pack(theme, force=force)
+        write_catalog()
 
     print(json.dumps(resolve_all(theme, pack), separators=(",", ":")))
     return 0

@@ -1,0 +1,19 @@
+kenney — Kenney Interface Sounds
+================================
+
+Source: https://kenney.nl/assets/interface-sounds
+Author: Kenney Vleugels (www.kenney.nl)
+License: CC0 1.0 Universal
+  https://creativecommons.org/publicdomain/zero/1.0/
+
+Mapping
+  Audio/open_002.ogg         openwindow
+  Audio/close_002.ogg        closewindow
+  Audio/select_001.ogg       workspace
+  Audio/maximize_002.ogg     fullscreen
+  Audio/minimize_003.ogg     unfullscreen
+  Audio/switch_003.ogg       float
+  Audio/switch_004.ogg       unfloat
+  Audio/minimize_001.ogg     minimize
+  Audio/error_002.ogg        urgent
+  Audio/bong_001.ogg         bell

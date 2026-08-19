@@ -14,6 +14,7 @@ Item {
   readonly property string home: Quickshell.env("HOME")
   readonly property string pluginDir: manifest && manifest.__sourceDir ? String(manifest.__sourceDir) : ""
   readonly property string configPath: home + "/.config/omarchy/sounds/config"
+  readonly property string catalogPath: home + "/.config/omarchy/sounds/catalog.json"
   readonly property string themeNamePath: home + "/.local/state/omarchy/current/theme.name"
   readonly property var eventNames: Sounds.EVENT_NAMES
 
@@ -21,6 +22,7 @@ Item {
   property var config: Sounds.defaultConfig()
   property string configText: ""
   property var soundIndex: ({})
+  property var catalog: Sounds.fallbackCatalog()
   property bool generating: false
   property string pendingTheme: ""
   property bool pendingForce: false
@@ -58,10 +60,41 @@ Item {
   function applySoundIndex(text) {
     try {
       var parsed = JSON.parse(String(text || "{}"))
-      root.soundIndex = parsed && typeof parsed === "object" ? parsed : {}
+      var next = {}
+      if (parsed && typeof parsed === "object") {
+        for (var i = 0; i < root.eventNames.length; i++) {
+          var event = root.eventNames[i]
+          if (parsed[event])
+            next[event] = parsed[event]
+        }
+      }
+      root.soundIndex = next
     } catch (error) {
       root.soundIndex = {}
     }
+  }
+
+  function applyCatalog(text) {
+    try {
+      root.catalog = Sounds.normalizeCatalog(JSON.parse(String(text || "{}")))
+    } catch (error) {
+      root.catalog = Sounds.fallbackCatalog()
+    }
+  }
+
+  function helpState() {
+    return {
+      enabled: root.enabled,
+      volume: root.volume,
+      theme: root.themeName,
+      pack: root.config.pack || "",
+      generating: root.generating,
+      catalog: root.catalog
+    }
+  }
+
+  function knownPacks() {
+    return Sounds.knownPackNames(root.catalog)
   }
 
   onPluginDirChanged: {
@@ -111,19 +144,20 @@ Item {
   }
 
   function play(event) {
+    event = String(event || "").trim().toLowerCase()
+    if (root.eventNames.indexOf(event) < 0)
+      return ""
     if (!root.enabled)
-      return false
+      return "disabled"
     if (root.config.events && root.config.events[event] === false)
-      return false
+      return "muted"
     var index = root.eventNames.indexOf(event)
-    if (index < 0)
-      return false
     var fx = players.objectAt(index)
     if (!fx || !String(fx.source || ""))
-      return false
+      return "missing"
     fx.volume = root.volume
     fx.play()
-    return true
+    return event
   }
 
   function handleHyprlandEvent(event) {
@@ -136,7 +170,7 @@ Item {
     var last = root.lastPlayed[name] || 0
     if (now - last < (root.config.burst_ms || 0))
       return
-    if (play(name)) {
+    if (play(name) === name) {
       var next = {}
       for (var key in root.lastPlayed)
         next[key] = root.lastPlayed[key]
@@ -153,6 +187,8 @@ Item {
       pack: root.config.pack || "",
       pluginDir: root.pluginDir,
       generating: root.generating,
+      packs: root.knownPacks(),
+      events: root.eventNames,
       sounds: root.soundIndex
     })
   }
@@ -208,6 +244,16 @@ Item {
     onFileChanged: reload()
   }
 
+  FileView {
+    id: catalogFile
+    path: root.catalogPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.applyCatalog(text())
+    onLoadFailed: function() { root.catalog = Sounds.fallbackCatalog() }
+    onFileChanged: reload()
+  }
+
   Connections {
     target: Hyprland
     function onRawEvent(event) { root.handleHyprlandEvent(event) }
@@ -221,7 +267,15 @@ Item {
   IpcHandler {
     target: "ui-sounds"
 
+    function help(): string {
+      return Sounds.formatHelp(root.helpState())
+    }
+
     function status(): string {
+      return Sounds.formatStatus(root.helpState())
+    }
+
+    function json(): string {
       return root.statusJson()
     }
 
@@ -240,8 +294,23 @@ Item {
       return "off"
     }
 
+    function packs(): string {
+      return Sounds.formatPacks(root.catalog, root.config.pack)
+    }
+
+    function themes(): string {
+      return Sounds.formatThemes(root.catalog, root.themeName)
+    }
+
+    function events(): string {
+      return Sounds.formatEvents(root.catalog, root.config.events)
+    }
+
     function play(event: string): string {
-      return root.play(event) ? event : "missing"
+      var result = root.play(event)
+      if (result)
+        return result
+      return "unknown event: " + event + "\n\n" + Sounds.formatEvents(root.catalog, root.config.events)
     }
 
     function generate(): string {
@@ -251,8 +320,13 @@ Item {
 
     function pack(name: string): string {
       var next = String(name || "").trim().toLowerCase()
+      if (next === "list" || next === "ls" || next === "help" || next === "?")
+        return Sounds.formatPacks(root.catalog, root.config.pack)
       if (next === "theme" || next === "auto" || next === "off")
         next = ""
+      var known = root.knownPacks()
+      if (next && known.indexOf(next) < 0)
+        return "unknown pack: " + next + "\n\n" + Sounds.formatPacks(root.catalog, root.config.pack)
       var text = Sounds.setPackInConfig(root.configText || Sounds.DEFAULT_CONFIG_TEXT, next)
       configFile.setText(text)
       root.applyConfig(text)
