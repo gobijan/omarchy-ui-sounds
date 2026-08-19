@@ -56,6 +56,11 @@ Item {
     }
   }
 
+  onPluginDirChanged: {
+    if (root.pluginDir)
+      generatePack(root.themeName || "default", false)
+  }
+
   function generatePack(theme, force) {
     if (!root.pluginDir || generateProcess.running)
       return
@@ -169,7 +174,10 @@ Item {
     function onRawEvent(event) { root.handleHyprlandEvent(event) }
   }
 
-  Component.onCompleted: generatePack(root.themeName, false)
+  Component.onCompleted: {
+    if (root.pluginDir)
+      generatePack(root.themeName, false)
+  }
 
   IpcHandler {
     target: "ui-sounds"
