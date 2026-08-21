@@ -27,10 +27,29 @@ var EVENT_NAMES = [
   "bell"
 ]
 
+// The Quake open/close samples are 320 ms, while the default event burst
+// interval permits a new hit every 100 ms. Four ready voices keep those tactile
+// events fully retriggerable without replaying a busy effect.
+var EVENT_VOICES = {
+  openwindow: 4,
+  closewindow: 4
+}
+
 var IGNORE_CLASSES = {
   "hyprland-preview-share-picker": true,
-  "xdph-picker": true
+  "xdph-picker": true,
+  "org.omarchy.screensaver": true,
+  "org.omarchy.lock": true,
+  "omarchy-lock": true,
+  "omarchy-shell": true,
+  "quickshell": true,
+  "gtk-layer-shell": true,
+  "hyprlock": true,
+  "swaylock": true
 }
+
+var MAX_IGNORED_WINDOWS = 128
+var MAX_IGNORED_WINDOW_AGE_MS = 300000
 
 var SOUND_EXTS = [".wav", ".ogg", ".oga", ".mp3", ".flac", ".opus"]
 
@@ -304,16 +323,180 @@ function eventParts(event, count) {
   return String(event && event.data ? event.data : "").split(",")
 }
 
-function soundForEvent(event) {
+function hasRealScreen(screens) {
+  var list = screens || []
+  for (var i = 0; i < list.length; i++) {
+    var screen = list[i]
+    var name = screen ? String(screen.name || "").trim() : ""
+    if (screen && name && name.toUpperCase() !== "FALLBACK"
+        && Number(screen.width) > 0 && Number(screen.height) > 0)
+      return true
+  }
+  return false
+}
+
+function hasAllSounds(soundIndex, eventNames) {
+  var index = soundIndex || {}
+  var events = eventNames || []
+  if (!events.length)
+    return false
+  for (var i = 0; i < events.length; i++) {
+    if (!String(index[events[i]] || ""))
+      return false
+  }
+  return true
+}
+
+function playerModel(eventNames) {
+  var events = eventNames || []
+  var model = []
+  for (var i = 0; i < events.length; i++) {
+    var event = String(events[i] || "")
+    var voices = Math.max(1, Number(EVENT_VOICES[event]) || 1)
+    for (var voice = 0; voice < voices; voice++)
+      model.push(event)
+  }
+  return model
+}
+
+function canPlay(state) {
+  var value = state || {}
+  if (value.configLoaded !== true || value.enabled !== true)
+    return false
+  if (value.eventMuted === true || value.startupGraceComplete !== true)
+    return false
+  var screenAvailable = value.realScreenAvailable === true
+    || (value.realScreenAvailable === undefined && hasRealScreen(value.screens))
+  if (!screenAvailable)
+    return false
+  if (value.sessionLocked === true || value.sessionIdle === true || value.chromeActive === true)
+    return false
+  if (value.audioCoolingDown === true || value.audioAvailable !== true)
+    return false
+  if (value.requirePlayers !== false && value.playersReady !== true)
+    return false
+  if (value.requireReady === true && (value.effectReady !== true || value.effectPlaying === true))
+    return false
+  return true
+}
+
+function newIgnoredWindowTracker() {
+  return { addresses: {}, order: [] }
+}
+
+function normalizedAddress(address) {
+  return String(address || "").trim().toLowerCase()
+}
+
+function normalizedClass(klass) {
+  return String(klass || "").trim().toLowerCase()
+}
+
+function isIgnoredClass(klass) {
+  return IGNORE_CLASSES[normalizedClass(klass)] === true
+}
+
+function rememberIgnoredWindow(tracker, address) {
+  var key = normalizedAddress(address)
+  if (!tracker || !key)
+    return
+  if (!tracker.addresses)
+    tracker.addresses = {}
+  if (!tracker.order)
+    tracker.order = []
+  if (tracker.addresses[key])
+    return
+  tracker.addresses[key] = Date.now()
+  tracker.order.push(key)
+  while (tracker.order.length > MAX_IGNORED_WINDOWS) {
+    var stale = tracker.order.shift()
+    delete tracker.addresses[stale]
+  }
+}
+
+function forgetIgnoredWindow(tracker, address) {
+  var key = normalizedAddress(address)
+  if (!tracker || !tracker.addresses || !tracker.addresses[key])
+    return false
+  delete tracker.addresses[key]
+  if (tracker.order) {
+    var index = tracker.order.indexOf(key)
+    if (index >= 0)
+      tracker.order.splice(index, 1)
+  }
+  return true
+}
+
+function isIgnoredWindow(tracker, address) {
+  var key = normalizedAddress(address)
+  return !!(tracker && tracker.addresses && key && tracker.addresses[key])
+}
+
+function pruneIgnoredWindows(tracker, now) {
+  if (!tracker || !tracker.addresses || !tracker.order)
+    return
+  var cutoff = Number(now || Date.now()) - MAX_IGNORED_WINDOW_AGE_MS
+  while (tracker.order.length) {
+    var key = tracker.order[0]
+    if (Number(tracker.addresses[key] || 0) > cutoff)
+      break
+    tracker.order.shift()
+    delete tracker.addresses[key]
+  }
+}
+
+function ignoredWindowCount(tracker) {
+  if (!tracker || !tracker.addresses)
+    return 0
+  var count = 0
+  for (var key in tracker.addresses) {
+    if (tracker.addresses[key])
+      count += 1
+  }
+  return count
+}
+
+function eventAddress(name, event) {
+  if (name === "openwindow")
+    return String(eventParts(event, 4)[0] || "")
+  if (name === "closewindow" || name === "urgent")
+    return String(eventParts(event, 1)[0] || "")
+  if (name === "changefloatingmode" || name === "minimized")
+    return String(eventParts(event, 2)[0] || "")
+  if (name === "fullscreen") {
+    var parts = eventParts(event, 2)
+    if (parts.length > 1)
+      return String(parts[0] || "")
+  }
+  return ""
+}
+
+function soundForEvent(event, ignoredWindows) {
   var name = String(event && event.name ? event.name : "")
   var data = String(event && event.data ? event.data : "")
+  pruneIgnoredWindows(ignoredWindows, Date.now())
   if (name === "openwindow") {
     var parts = eventParts(event, 4)
+    var address = String(parts[0] || "")
     var klass = String(parts[2] || "")
-    if (IGNORE_CLASSES[klass])
+    if (isIgnoredClass(klass)) {
+      rememberIgnoredWindow(ignoredWindows, address)
       return ""
+    }
+    forgetIgnoredWindow(ignoredWindows, address)
     return "openwindow"
   }
+  if (name === "closewindow") {
+    var closedAddress = eventAddress(name, event)
+    if (isIgnoredWindow(ignoredWindows, closedAddress)) {
+      forgetIgnoredWindow(ignoredWindows, closedAddress)
+      return ""
+    }
+    return "closewindow"
+  }
+  var addressForEvent = eventAddress(name, event)
+  if (addressForEvent && isIgnoredWindow(ignoredWindows, addressForEvent))
+    return ""
   if (EVENT_SOUNDS[name])
     return EVENT_SOUNDS[name]
   if (STATEFUL_EVENTS[name]) {

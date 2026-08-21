@@ -87,6 +87,26 @@ event.bell=false
 | `pack` | empty | Which sample set to use after theme overlays. Empty / `theme` / `auto` follows the Omarchy theme palette. Named packs live in `packs/<name>/`. |
 | `event.<name>` | on, except `urgent` and `bell` | Per-event mute. `false` skips that event even if a file exists. |
 
+Setting `enabled=false` here makes the loaded service fully inert: it disconnects
+from Hyprland and destroys its audio player bank. Omarchy's plugin registry has a
+separate meaning for an `"enabled": false` field on an entry in
+`~/.config/omarchy/shell.json`: that field does **not** unload a service. If the
+plugin id is present in `plugins[]`, Omarchy considers the plugin loaded. Use
+`omarchy-shell ui-sounds disable` for the inert playback state, or remove
+`gobijan.ui-sounds` from `plugins[]` (or add it to `disabledPlugins[]`) to stop
+loading the service entirely, then restart the shell.
+
+Playback is suspended while Omarchy is idle or locked and whenever Quickshell
+has no real output (a screen must have a non-empty, non-`FALLBACK` name and
+non-zero size).
+Compositor chrome such as `org.omarchy.screensaver`, lock windows, and desktop
+portal pickers is ignored on both window-open and matching window-close events.
+When the compositor and default audio sink are healthy, the short effects stay
+decoded in a low-latency player bank so window events play immediately and can
+overlap. Disabling playback, locking/idling, losing outputs, or an audio failure
+destroys the entire bank; failures start a 10-second backoff before probing the
+default sink again.
+
 Events you can set with `event.<name>`:
 
 | Event | When it plays |
@@ -149,6 +169,7 @@ omarchy-shell ui-sounds generate
 ```bash
 omarchy plugin add /path/to/omarchy-ui-sounds --enable --yes
 omarchy plugin validate /path/to/omarchy-ui-sounds
+node tests/test_sounds.js
 ```
 
 `omarchy plugin add` clones the repo into `~/.config/omarchy/plugins/gobijan.ui-sounds/`. After that, edit the checkout there or update from the origin.

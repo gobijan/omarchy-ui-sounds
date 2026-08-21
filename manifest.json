@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "gobijan.ui-sounds",
   "name": "UI Sounds",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "author": "gobijan",
-  "description": "Theme-aware window and workspace sound effects for Omarchy",
+  "description": "Your desktop has a sound card. Make it scream.",
   "kinds": ["service"],
   "keepLoaded": true,
   "entryPoints": {

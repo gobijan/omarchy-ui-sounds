@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtMultimedia
 import Quickshell
@@ -17,44 +19,116 @@ Item {
   readonly property string catalogPath: home + "/.config/omarchy/sounds/catalog.json"
   readonly property string themeNamePath: home + "/.local/state/omarchy/current/theme.name"
   readonly property var eventNames: Sounds.EVENT_NAMES
+  readonly property var playerModel: Sounds.playerModel(root.eventNames)
 
   property string themeName: "default"
   property var config: Sounds.defaultConfig()
+  property bool configLoaded: false
   property string configText: ""
   property var soundIndex: ({})
   property var catalog: Sounds.fallbackCatalog()
   property bool generating: false
+  property string queuedTheme: ""
+  property bool queuedForce: false
   property string pendingTheme: ""
   property bool pendingForce: false
-  property double startedAt: Date.now()
+  property string generatingTheme: ""
+  property string generatingPack: ""
+  property bool generatingForce: false
   property var lastPlayed: ({})
 
-  readonly property bool enabled: config.enabled !== false
-  readonly property real volume: Number(config.volume || 0)
+  property bool realScreensAvailable: false
+  property bool startupGraceComplete: false
+  property bool audioCoolingDown: false
+  property bool audioSinkAvailable: false
+  property int readyPlayerCount: 0
+  property var ignoredWindows: Sounds.newIgnoredWindowTracker()
+  property int ignoredWindowCount: 0
+
+  readonly property bool playbackEnabled: configLoaded && config.enabled === true
+  readonly property real volume: {
+    var value = Number(config.volume)
+    return isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
+  }
+
+  // null when the host has no lock/idle service
+  readonly property var lockService: shell && shell._services ? shell._services["omarchy.lock"] : null
+  readonly property var idleService: shell && shell._services ? shell._services["omarchy.idle"] : null
+  readonly property bool sessionLocked: !!(lockService && lockService.locked)
+  readonly property bool sessionIdle: !!(idleService && (
+    idleService.idledThisCycle
+    || idleService.screensaverStartedThisCycle
+    || Number(idleService.screensaverWindowCount || 0) > 0
+  ))
+  readonly property bool audioProbeAllowed: root.playbackEnabled
+    && root.realScreensAvailable
+    && !root.sessionLocked
+    && !root.sessionIdle
+    && !root.audioCoolingDown
+  readonly property bool playersActive: root.audioProbeAllowed
+    && root.audioSinkAvailable
+    && root.ignoredWindowCount === 0
+    && Sounds.hasAllSounds(root.soundIndex, root.eventNames)
+  readonly property bool playersReady: root.playersActive
+    && players.count === root.playerModel.length
+    && root.readyPlayerCount === root.playerModel.length
+  readonly property bool playbackReady: Sounds.canPlay({
+    configLoaded: root.configLoaded,
+    enabled: root.playbackEnabled,
+    eventMuted: false,
+    startupGraceComplete: root.startupGraceComplete,
+    realScreenAvailable: root.realScreensAvailable,
+    sessionLocked: root.sessionLocked,
+    sessionIdle: root.sessionIdle,
+    chromeActive: root.ignoredWindowCount > 0,
+    audioCoolingDown: root.audioCoolingDown,
+    audioAvailable: root.audioSinkAvailable,
+    playersReady: root.playersReady
+  })
+
+  // Stay subscribed while playback is enabled so ignored chrome is recorded
+  // even when the player bank is down; canPlay() still drops the samples.
+  readonly property bool eventListeningEnabled: root.playbackEnabled && root.realScreensAvailable
 
   function applyConfig(text) {
     var previousPack = root.config.pack || ""
+    var next = Sounds.parseConfig(text)
     root.configText = text || ""
-    root.config = Sounds.parseConfig(text)
-    if (root.pluginDir && (root.config.pack || "") !== previousPack)
-      generatePack(root.themeName, false)
+    root.config = next
+    root.configLoaded = true
+
+    var packChanged = (next.pack || "") !== previousPack
+    if (packChanged) {
+      root.stopAndUnloadPlayers()
+      root.soundIndex = ({})
+    }
+
+    if (!next.enabled) {
+      root.stopAndUnloadPlayers()
+      return
+    }
+
+    if (packChanged)
+      root.scheduleGenerate(root.themeName, false)
   }
 
   function applyThemeName(text) {
     var name = String(text || "").trim() || "default"
     if (name === root.themeName) {
-      if (!Object.keys(root.soundIndex).length)
-        generatePack(name, false)
+      if (root.playbackEnabled && !Object.keys(root.soundIndex).length)
+        root.scheduleGenerate(name, false)
       return
     }
+    root.stopAndUnloadPlayers()
+    root.soundIndex = ({})
     root.themeName = name
-    generatePack(name, false)
+    root.scheduleGenerate(name, false)
   }
 
   function writeEnabled(value) {
     var next = Sounds.setEnabledInConfig(root.configText || Sounds.DEFAULT_CONFIG_TEXT, value)
     configFile.setText(next)
-    applyConfig(next)
+    root.applyConfig(next)
   }
 
   function applySoundIndex(text) {
@@ -84,7 +158,7 @@ Item {
 
   function helpState() {
     return {
-      enabled: root.enabled,
+      enabled: root.playbackEnabled,
       volume: root.volume,
       theme: root.themeName,
       pack: root.config.pack || "",
@@ -97,16 +171,47 @@ Item {
     return Sounds.knownPackNames(root.catalog)
   }
 
-  onPluginDirChanged: {
-    if (root.pluginDir)
-      generatePack(root.themeName || "default", false)
+  function clearIgnoredWindows() {
+    root.ignoredWindows = Sounds.newIgnoredWindowTracker()
+    root.ignoredWindowCount = 0
+  }
+
+  function refreshRealScreens() {
+    var available = Sounds.hasRealScreen(Quickshell.screens || [])
+    if (!available)
+      root.clearIgnoredWindows()
+    root.realScreensAvailable = available
+  }
+
+  function armStartupGrace() {
+    startupGraceTimer.stop()
+    root.startupGraceComplete = false
+    var delay = Math.max(0, Number(root.config.startup_grace_ms) || 0)
+    if (delay === 0) {
+      root.startupGraceComplete = true
+      return
+    }
+    startupGraceTimer.interval = delay
+    startupGraceTimer.restart()
+  }
+
+  function scheduleGenerate(theme, force) {
+    if (!root.playbackEnabled || !root.pluginDir)
+      return
+    root.queuedTheme = theme || root.themeName || "default"
+    root.queuedForce = root.queuedForce || !!force
+    generateCoalesceTimer.restart()
   }
 
   function generatePack(theme, force) {
-    if (!root.pluginDir)
+    if (!root.playbackEnabled || !root.pluginDir)
       return
     theme = theme || root.themeName || "default"
     if (generateProcess.running) {
+      var sameRequest = theme === root.generatingTheme
+        && (root.config.pack || "") === root.generatingPack
+      if (sameRequest && (!force || root.generatingForce))
+        return
       root.pendingTheme = theme
       root.pendingForce = root.pendingForce || !!force
       return
@@ -117,60 +222,144 @@ Item {
     if (root.config.pack)
       args.push("--pack", root.config.pack)
     args.push(theme)
+    root.generatingTheme = theme
+    root.generatingPack = root.config.pack || ""
+    root.generatingForce = !!force
     root.generating = true
     generateProcess.command = args
     generateProcess.running = true
   }
 
   function finishGenerate() {
+    if (!root.generating)
+      return
     root.generating = false
+    root.generatingTheme = ""
+    root.generatingPack = ""
+    root.generatingForce = false
+    if (!root.playbackEnabled) {
+      root.pendingTheme = ""
+      root.pendingForce = false
+      return
+    }
     if (!root.pendingTheme)
       return
     var theme = root.pendingTheme
     var force = root.pendingForce
     root.pendingTheme = ""
     root.pendingForce = false
-    generatePack(theme, force)
+    root.scheduleGenerate(theme, force)
   }
 
   function soundPath(event) {
-    if (root.soundIndex[event])
-      return root.soundIndex[event]
-    return root.home + "/.config/omarchy/sounds/generated/" + root.themeName + "/" + event + ".wav"
+    return root.soundIndex[event] ? String(root.soundIndex[event]) : ""
   }
 
-  function soundUrl(event) {
-    return Sounds.fileUrl(soundPath(event))
+  function canPlay(event, fx) {
+    if (!root.playbackReady)
+      return false
+    if (root.config.events && root.config.events[event] === false)
+      return false
+    return !!fx && fx.status === SoundEffect.Ready && !fx.playing
+  }
+
+  function stopAndUnloadPlayers() {
+    playerWarmupTimeout.stop()
+    for (var i = 0; i < players.count; i++) {
+      var fx = players.objectAt(i) as SoundEffect
+      if (!fx)
+        continue
+      if (fx.playing)
+        fx.stop()
+      fx.source = ""
+    }
+    root.readyPlayerCount = 0
+  }
+
+  function refreshPlayerReadiness() {
+    if (!root.playersActive) {
+      root.readyPlayerCount = 0
+      playerWarmupTimeout.stop()
+      return
+    }
+    var ready = 0
+    for (var i = 0; i < players.count; i++) {
+      var fx = players.objectAt(i) as SoundEffect
+      if (fx && fx.status === SoundEffect.Ready)
+        ready += 1
+    }
+    root.readyPlayerCount = ready
+    if (ready === root.playerModel.length)
+      playerWarmupTimeout.stop()
+  }
+
+  function probeAudioSink() {
+    if (!root.audioProbeAllowed || root.audioSinkAvailable || audioProbeProcess.running)
+      return
+    audioProbeProcess.command = ["/usr/bin/wpctl", "inspect", "@DEFAULT_AUDIO_SINK@"]
+    audioProbeTimeout.restart()
+    audioProbeProcess.running = true
+  }
+
+  function enterAudioCooldown(reason) {
+    var firstFailure = !root.audioCoolingDown
+    root.audioCoolingDown = true
+    root.audioSinkAvailable = false
+    if (firstFailure) {
+      console.warn("ui-sounds: audio playback failed; backing off for 10 seconds (" + reason + ")")
+      audioCooldownTimer.restart()
+    }
+    root.stopAndUnloadPlayers()
+  }
+
+  function availablePlayer(event) {
+    for (var i = 0; i < players.count; i++) {
+      var fx = players.objectAt(i) as SoundEffect
+      if (root.playerModel[i] === event && fx
+          && fx.status === SoundEffect.Ready && !fx.playing)
+        return fx
+    }
+    return null
   }
 
   function play(event) {
     event = String(event || "").trim().toLowerCase()
-    if (root.eventNames.indexOf(event) < 0)
+    var index = root.eventNames.indexOf(event)
+    if (index < 0)
       return ""
-    if (!root.enabled)
+    var fx = root.availablePlayer(event)
+    if (root.canPlay(event, fx)) {
+      fx.play()
+      return event
+    }
+    if (!root.playbackEnabled)
       return "disabled"
     if (root.config.events && root.config.events[event] === false)
       return "muted"
-    var index = root.eventNames.indexOf(event)
-    var fx = players.objectAt(index)
-    if (!fx || !String(fx.source || ""))
-      return "missing"
-    fx.volume = root.volume
-    fx.play()
-    return event
+    if (!root.playersReady)
+      return "loading"
+    if (!fx)
+      return "busy"
+    return "unavailable"
   }
 
   function handleHyprlandEvent(event) {
-    var name = Sounds.soundForEvent(event)
+    if (!root.eventListeningEnabled)
+      return
+
+    var previousIgnoredCount = root.ignoredWindowCount
+    var name = Sounds.soundForEvent(event, root.ignoredWindows)
+    root.ignoredWindowCount = Sounds.ignoredWindowCount(root.ignoredWindows)
+    if (root.ignoredWindowCount > previousIgnoredCount)
+      root.stopAndUnloadPlayers()
     if (!name)
       return
+
     var now = Date.now()
-    if (now - root.startedAt < (root.config.startup_grace_ms || 0))
-      return
     var last = root.lastPlayed[name] || 0
     if (now - last < (root.config.burst_ms || 0))
       return
-    if (play(name) === name) {
+    if (root.play(name) === name) {
       var next = {}
       for (var key in root.lastPlayed)
         next[key] = root.lastPlayed[key]
@@ -181,24 +370,170 @@ Item {
 
   function statusJson() {
     return JSON.stringify({
-      enabled: root.enabled,
+      enabled: root.playbackEnabled,
       volume: root.volume,
       theme: root.themeName,
       pack: root.config.pack || "",
       pluginDir: root.pluginDir,
       generating: root.generating,
+      realScreens: root.realScreensAvailable,
+      sessionLocked: root.sessionLocked,
+      sessionIdle: root.sessionIdle,
+      audioCoolingDown: root.audioCoolingDown,
+      audioSinkAvailable: root.audioSinkAvailable,
+      playersActive: root.playersActive,
+      playersReady: root.playersReady,
+      readyPlayers: root.readyPlayerCount,
+      playerCount: players.count,
       packs: root.knownPacks(),
       events: root.eventNames,
       sounds: root.soundIndex
     })
   }
 
+  onPlaybackEnabledChanged: {
+    if (!root.playbackEnabled) {
+      generateCoalesceTimer.stop()
+      startupGraceTimer.stop()
+      audioCooldownTimer.stop()
+      root.queuedTheme = ""
+      root.queuedForce = false
+      root.pendingTheme = ""
+      root.pendingForce = false
+      root.startupGraceComplete = false
+      root.audioCoolingDown = false
+      root.audioSinkAvailable = false
+      root.stopAndUnloadPlayers()
+      return
+    }
+    root.armStartupGrace()
+    root.scheduleGenerate(root.themeName, false)
+  }
+
+  onPluginDirChanged: root.scheduleGenerate(root.themeName, false)
+
+  onAudioProbeAllowedChanged: {
+    if (!root.audioProbeAllowed) {
+      audioProbeTimeout.stop()
+      if (audioProbeProcess.running)
+        audioProbeProcess.running = false
+      root.audioSinkAvailable = false
+      root.stopAndUnloadPlayers()
+      return
+    }
+    Qt.callLater(root.probeAudioSink)
+  }
+
+  onPlayersActiveChanged: {
+    root.readyPlayerCount = 0
+    if (!root.playersActive) {
+      playerWarmupTimeout.stop()
+      return
+    }
+    playerWarmupTimeout.restart()
+    Qt.callLater(root.refreshPlayerReadiness)
+  }
+
+  onSessionLockedChanged: {
+    if (root.sessionLocked)
+      root.clearIgnoredWindows()
+  }
+
+  onSessionIdleChanged: {
+    if (root.sessionIdle)
+      root.clearIgnoredWindows()
+  }
+
+  Timer {
+    id: startupGraceTimer
+    repeat: false
+    onTriggered: root.startupGraceComplete = true
+  }
+
+  Timer {
+    id: generateCoalesceTimer
+    interval: 250
+    repeat: false
+    onTriggered: {
+      var theme = root.queuedTheme || root.themeName || "default"
+      var force = root.queuedForce
+      root.queuedTheme = ""
+      root.queuedForce = false
+      root.generatePack(theme, force)
+    }
+  }
+
+  Timer {
+    id: audioCooldownTimer
+    interval: 10000
+    repeat: false
+    onTriggered: root.audioCoolingDown = false
+  }
+
+  Timer {
+    id: audioProbeTimeout
+    interval: 2000
+    repeat: false
+    onTriggered: root.enterAudioCooldown("default audio sink probe timed out")
+  }
+
+  Timer {
+    id: playerWarmupTimeout
+    interval: 5000
+    repeat: false
+    onTriggered: root.enterAudioCooldown("preloaded sounds did not become ready")
+  }
+
   Instantiator {
     id: players
-    model: root.eventNames
+    active: root.playersActive
+    asynchronous: false
+    model: root.playerModel
+
     delegate: SoundEffect {
-      source: Sounds.fileUrl(root.soundIndex[modelData] || (root.home + "/.config/omarchy/sounds/generated/" + root.themeName + "/" + modelData + ".wav"))
+      required property string modelData
+      readonly property string eventName: modelData
+      source: root.playersActive ? Sounds.fileUrl(root.soundPath(eventName)) : ""
       volume: root.volume
+
+      onStatusChanged: {
+        if (status === SoundEffect.Error) {
+          if (root.playersActive)
+            root.enterAudioCooldown("sound effect error")
+        } else {
+          root.refreshPlayerReadiness()
+        }
+      }
+
+      Component.onCompleted: Qt.callLater(root.refreshPlayerReadiness)
+      Component.onDestruction: {
+        if (playing)
+          stop()
+        source = ""
+      }
+    }
+
+    onObjectAdded: function(index, object) { Qt.callLater(root.refreshPlayerReadiness) }
+    onObjectRemoved: function(index, object) { Qt.callLater(root.refreshPlayerReadiness) }
+  }
+
+  Process {
+    id: audioProbeProcess
+    stdout: StdioCollector {
+      waitForEnd: true
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      audioProbeTimeout.stop()
+      if (!root.audioProbeAllowed)
+        return
+      if (exitCode === 0) {
+        root.audioSinkAvailable = true
+      } else {
+        root.enterAudioCooldown("no usable default audio sink")
+      }
     }
   }
 
@@ -207,7 +542,10 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.applySoundIndex(text)
+        if (root.playbackEnabled
+            && root.generatingTheme === root.themeName
+            && root.generatingPack === (root.config.pack || ""))
+          root.applySoundIndex(text)
         root.finishGenerate()
       }
     }
@@ -255,14 +593,17 @@ Item {
   }
 
   Connections {
+    target: Quickshell
+    function onScreensChanged() { root.refreshRealScreens() }
+  }
+
+  Connections {
     target: Hyprland
+    enabled: root.eventListeningEnabled
     function onRawEvent(event) { root.handleHyprlandEvent(event) }
   }
 
-  Component.onCompleted: {
-    if (root.pluginDir)
-      generatePack(root.themeName, false)
-  }
+  Component.onCompleted: root.refreshRealScreens()
 
   IpcHandler {
     target: "ui-sounds"
@@ -280,8 +621,8 @@ Item {
     }
 
     function toggle(): string {
-      root.writeEnabled(!root.enabled)
-      return root.enabled ? "on" : "off"
+      root.writeEnabled(!root.playbackEnabled)
+      return root.playbackEnabled ? "on" : "off"
     }
 
     function enable(): string {
@@ -314,7 +655,9 @@ Item {
     }
 
     function generate(): string {
-      root.generatePack(root.themeName, true)
+      if (!root.playbackEnabled)
+        return "disabled"
+      root.scheduleGenerate(root.themeName, true)
       return root.themeName
     }
 

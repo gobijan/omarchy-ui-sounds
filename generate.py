@@ -62,7 +62,7 @@ EVENT_SUMMARIES = {
 }
 
 USAGE = """\
-Usage: generate.py [<command>] [--pack NAME] [--force] [--in-tree] [theme]
+Usage: generate.py [<command>] [--pack NAME] [--force] [theme]
 
 Commands:
   generate   Write samples and print resolved paths (default)
@@ -432,10 +432,10 @@ def write_catalog() -> None:
     CATALOG_PATH.write_text(json.dumps(catalog(), indent=2) + "\n", encoding="utf-8")
 
 
-def generate_named_pack(name: str, force: bool = False, in_tree: bool = False) -> Path:
+def generate_named_pack(name: str, force: bool = False) -> Path:
     recipes_for = {"90sfps": quake_recipes}
     if name in recipes_for:
-        dest = (PLUGIN_PACKS if in_tree else USER_PACKS) / name
+        dest = USER_PACKS / name
         dest.mkdir(parents=True, exist_ok=True)
         for event, samples in recipes_for[name]().items():
             path = dest / f"{event}.wav"
@@ -525,7 +525,7 @@ def main(argv: list[str]) -> int:
 
     if command != "list":
         if pack and pack not in {"theme", "auto", "default"}:
-            generate_named_pack(pack, force=force, in_tree="--in-tree" in argv)
+            generate_named_pack(pack, force=force)
         generate_pack("default", force=force)
         generate_pack(theme, force=force)
         write_catalog()
