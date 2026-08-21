@@ -2,12 +2,29 @@
   "schemaVersion": 1,
   "id": "gobijan.ui-sounds",
   "name": "UI Sounds",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "author": "gobijan",
   "description": "Your desktop has a sound card. Make it scream.",
-  "kinds": ["service"],
+  "kinds": ["service", "bar-widget"],
   "keepLoaded": true,
   "entryPoints": {
-    "service": "Service.qml"
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "UI Sounds",
+    "description": "Mute toggle for window and workspace sounds",
+    "category": "Status",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "schema": [
+      {
+        "key": "alwaysShow",
+        "type": "boolean",
+        "label": "Always Show",
+        "description": "Show the mute toggle without waiting for hover.",
+        "defaultValue": false
+      }
+    ]
   }
 }

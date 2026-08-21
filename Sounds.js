@@ -156,6 +156,65 @@ function setPackInConfig(text, pack) {
   return setKeyInConfig(text || DEFAULT_CONFIG_TEXT, "pack", pack)
 }
 
+function widgetId(entry) {
+  if (typeof entry === "string")
+    return entry
+  if (entry && typeof entry === "object")
+    return String(entry.id || "")
+  return ""
+}
+
+function copyBarSection(entries) {
+  var out = []
+  var list = entries || []
+  for (var i = 0; i < list.length; i++)
+    out.push(list[i])
+  return out
+}
+
+function copyBarLayout(layout) {
+  return {
+    left: copyBarSection(layout && layout.left),
+    center: copyBarSection(layout && layout.center),
+    right: copyBarSection(layout && layout.right)
+  }
+}
+
+function layoutHasWidget(layout, id) {
+  var sections = ["left", "center", "right"]
+  for (var s = 0; s < sections.length; s++) {
+    var entries = layout && layout[sections[s]] ? layout[sections[s]] : []
+    for (var i = 0; i < entries.length; i++) {
+      if (widgetId(entries[i]) === id)
+        return true
+    }
+  }
+  return false
+}
+
+function placeCenterToggle(layout, id) {
+  var next = copyBarLayout(layout)
+  if (!id || layoutHasWidget(next, id))
+    return { layout: next, changed: false }
+  var center = next.center
+  var indicators = -1
+  var clock = -1
+  for (var i = 0; i < center.length; i++) {
+    var name = widgetId(center[i])
+    if (name === "omarchy.indicators")
+      indicators = i
+    else if (name === "omarchy.clock" && clock < 0)
+      clock = i
+  }
+  var index = 0
+  if (indicators >= 0)
+    index = indicators + 1
+  else if (clock >= 0)
+    index = clock
+  center.splice(index, 0, { id: id })
+  return { layout: next, changed: true }
+}
+
 function fallbackCatalog() {
   var packs = [{ name: "theme", summary: PACK_SUMMARIES.theme, path: "" }]
   var names = ["90sfps", "chip", "digital", "kenney", "quake", "scifi"]

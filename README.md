@@ -19,7 +19,13 @@ omarchy plugin update gobijan.ui-sounds
 omarchy plugin remove gobijan.ui-sounds
 ```
 
-The plugin is a headless `service`. Enabling it is enough — it does not add a bar widget. It listens to Hyprland events inside `omarchy-shell` and plays short `SoundEffect`s, so there is no extra systemd unit.
+The plugin is a `service` plus a center-bar mute toggle. Enabling it is enough. It listens to Hyprland events inside `omarchy-shell` and plays short `SoundEffect`s, so there is no extra systemd unit.
+
+The space-invader toggle sits with the other center-bar toggles (Do Not Disturb, Night Light, Stay Awake). Hover the middle of the bar to peek at it while sounds are on; while muted it stays visible with a slash through it, the same way Silence Notifications does. Click to mute or unmute. Move it with:
+
+```bash
+omarchy bar move gobijan.ui-sounds --section center --after omarchy.indicators
+```
 
 ## Why a plugin, not a theme
 
@@ -80,7 +86,7 @@ event.bell=false
 
 | Key | Default | What it does |
 |---|---|---|
-| `enabled` | `true` | Master on/off. The Toggle menu and `omarchy-shell ui-sounds toggle` flip this. |
+| `enabled` | `true` | Master on/off. The center-bar toggle, the Toggle menu, and `omarchy-shell ui-sounds toggle` flip this. |
 | `volume` | `0.45` | Playback level from `0` (silent) to `1` (full). This is independent of the system output slider. `0.45` is present without jumping over music. |
 | `startup_grace_ms` | `600` | Milliseconds after the plugin starts during which no sounds play. Covers the burst of Hyprland events when the shell comes up, so login does not machine-gun clicks. |
 | `burst_ms` | `100` | Per-event cooldown. If the same event fires twice inside this window (compositor double-fires, session restore), only the first click plays. Two windows you open farther apart still get two sounds. |
@@ -144,7 +150,7 @@ event.urgent=true
 
 ## Control
 
-Super menu → **Trigger → Toggle → Interface Sounds**:
+Center-bar space-invader toggle (hover the middle of the bar; stays shown, slashed, while muted), or Super menu → **Trigger → Toggle → Interface Sounds**:
 
 ![Toggle Interface Sounds](media/toggle-interface-sounds.png)
 
@@ -163,6 +169,12 @@ omarchy-shell ui-sounds generate
 ```
 
 `help`, `status`, `packs`, `themes`, and `events` print a list. `json` is the machine-readable snapshot. `pack list` is the same as `packs`. An unknown pack or event name prints the list instead of failing silently.
+
+Set `alwaysShow` on the bar widget to keep the invader visible even when sounds are on:
+
+```bash
+omarchy bar set gobijan.ui-sounds alwaysShow true --json
+```
 
 ## Local development
 

@@ -8,6 +8,8 @@ const vm = require("node:vm")
 const root = path.resolve(__dirname, "..")
 const soundsPath = path.join(root, "Sounds.js")
 const servicePath = path.join(root, "Service.qml")
+const widgetPath = path.join(root, "BarWidget.qml")
+const manifestPath = path.join(root, "manifest.json")
 const source = fs.readFileSync(soundsPath, "utf8").replace(/^\.pragma library\s*/, "")
 const Sounds = { console }
 vm.createContext(Sounds)
@@ -92,6 +94,9 @@ assert.equal(Sounds.canPlay({ ...healthyState, requireReady: true, effectReady: 
 // prevent disabled playback from retaining a handler, player, or bound source.
 const service = fs.readFileSync(servicePath, "utf8")
 assert.match(service, /readonly property bool playbackEnabled: configLoaded && config\.enabled === true/)
+assert.match(service, /readonly property bool muted: root\.configLoaded && !root\.playbackEnabled/)
+assert.match(service, /function ensureBarToggle\(\)/)
+assert.match(service, /Sounds\.placeCenterToggle/)
 assert.match(service, /readonly property bool eventListeningEnabled: root\.playbackEnabled && root\.realScreensAvailable/)
 assert.match(service, /Connections\s*{\s*target: Hyprland\s*enabled: root\.eventListeningEnabled/s)
 assert.match(service, /Instantiator\s*{\s*id: players\s*active: root\.playersActive/s)
@@ -106,5 +111,60 @@ assert.match(service, /generatingPack === \(root\.config\.pack \|\| ""\)/)
 assert.doesNotMatch(service, /root\.canPlay\(name, null\)/)
 assert.doesNotMatch(service, /id: playerLoader/)
 assert.doesNotMatch(service, /requireReady:\s*false/)
+
+const emptyLayout = { left: [], center: [], right: [] }
+const fromEmpty = Sounds.placeCenterToggle(emptyLayout, "gobijan.ui-sounds")
+assert.equal(fromEmpty.changed, true)
+assert.equal(fromEmpty.layout.center[0].id, "gobijan.ui-sounds")
+assert.equal(emptyLayout.center.length, 0)
+
+const withIndicators = {
+  left: [],
+  center: [{ id: "omarchy.indicators" }, { id: "omarchy.clock" }],
+  right: []
+}
+const afterIndicators = Sounds.placeCenterToggle(withIndicators, "gobijan.ui-sounds")
+assert.equal(afterIndicators.changed, true)
+assert.equal(afterIndicators.layout.center[0].id, "omarchy.indicators")
+assert.equal(afterIndicators.layout.center[1].id, "gobijan.ui-sounds")
+assert.equal(afterIndicators.layout.center[2].id, "omarchy.clock")
+assert.equal(withIndicators.center.length, 2)
+
+const alreadyPlaced = Sounds.placeCenterToggle(afterIndicators.layout, "gobijan.ui-sounds")
+assert.equal(alreadyPlaced.changed, false)
+assert.equal(alreadyPlaced.layout.center.length, 3)
+
+const clockOnly = {
+  left: [],
+  center: [{ id: "omarchy.clock" }, { id: "omarchy.weather" }],
+  right: []
+}
+const beforeClock = Sounds.placeCenterToggle(clockOnly, "gobijan.ui-sounds")
+assert.equal(beforeClock.layout.center[0].id, "gobijan.ui-sounds")
+assert.equal(beforeClock.layout.center[1].id, "omarchy.clock")
+assert.equal(Sounds.layoutHasWidget(beforeClock.layout, "gobijan.ui-sounds"), true)
+assert.equal(Sounds.layoutHasWidget(clockOnly, "gobijan.ui-sounds"), false)
+assert.equal(Sounds.placeCenterToggle(emptyLayout, "").changed, false)
+
+const widget = fs.readFileSync(widgetPath, "utf8")
+assert.match(widget, /BarIndicator/)
+assert.match(widget, /active: root\.muted/)
+assert.match(widget, /centerSectionRevealHeld/)
+assert.match(widget, /Enable Interface Sounds/)
+assert.match(widget, /Mute Interface Sounds/)
+assert.match(widget, /activeText: "󰯉"/)
+assert.match(widget, /inactiveText: "󰯉"/)
+assert.match(widget, /iconComponent: invaderIcon/)
+assert.match(widget, /visible: root\.muted/)
+assert.match(widget, /rotation: -45/)
+assert.match(widget, /height: 1/)
+assert.match(widget, /opacity: 0\.8/)
+assert.match(widget, /writeEnabled\(!root\.soundService\.playbackEnabled\)/)
+assert.match(widget, /readonly property bool shown: muted \|\| revealInactiveIndicators/)
+
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+assert.deepEqual(manifest.kinds, ["service", "bar-widget"])
+assert.equal(manifest.entryPoints.barWidget, "BarWidget.qml")
+assert.equal(manifest.barWidget.defaultSection, "center")
 
 console.log("Sounds.js hardening tests passed")

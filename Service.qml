@@ -46,6 +46,11 @@ Item {
   property int ignoredWindowCount: 0
 
   readonly property bool playbackEnabled: configLoaded && config.enabled === true
+  readonly property bool muted: root.configLoaded && !root.playbackEnabled
+  readonly property string barToggleStatePath: home + "/.local/state/omarchy/ui-sounds.bar-widget"
+  property bool barToggleStateLoaded: false
+  property bool barToggleAlreadyPlaced: false
+  property bool barToggleEnsured: false
   readonly property real volume: {
     var value = Number(config.volume)
     return isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
@@ -129,6 +134,47 @@ Item {
     var next = Sounds.setEnabledInConfig(root.configText || Sounds.DEFAULT_CONFIG_TEXT, value)
     configFile.setText(next)
     root.applyConfig(next)
+  }
+
+  function pluginId() {
+    return root.manifest && root.manifest.id ? String(root.manifest.id) : "gobijan.ui-sounds"
+  }
+
+  function markBarTogglePlaced() {
+    root.barToggleAlreadyPlaced = true
+    root.barToggleEnsured = true
+    barToggleStateFile.setText("1\n")
+  }
+
+  function ensureBarToggle() {
+    if (root.barToggleEnsured || !root.barToggleStateLoaded)
+      return
+    if (!root.shell || typeof root.shell.mutateShellConfig !== "function")
+      return
+    if (root.barToggleAlreadyPlaced) {
+      root.barToggleEnsured = true
+      return
+    }
+    var id = root.pluginId()
+    var config = root.shell.shellConfig
+    var layout = config && config.bar && config.bar.layout ? config.bar.layout : {}
+    if (Sounds.layoutHasWidget(layout, id)) {
+      root.markBarTogglePlaced()
+      return
+    }
+    var preview = Sounds.placeCenterToggle(layout, id)
+    if (!preview.changed) {
+      root.markBarTogglePlaced()
+      return
+    }
+    root.shell.mutateShellConfig(function(next) {
+      if (!next.bar)
+        next.bar = {}
+      var result = Sounds.placeCenterToggle(next.bar.layout || {}, id)
+      if (result.changed)
+        next.bar.layout = result.layout
+    })
+    root.markBarTogglePlaced()
   }
 
   function applySoundIndex(text) {
@@ -371,6 +417,7 @@ Item {
   function statusJson() {
     return JSON.stringify({
       enabled: root.playbackEnabled,
+      muted: root.muted,
       volume: root.volume,
       theme: root.themeName,
       pack: root.config.pack || "",
@@ -411,6 +458,7 @@ Item {
   }
 
   onPluginDirChanged: root.scheduleGenerate(root.themeName, false)
+  onShellChanged: Qt.callLater(root.ensureBarToggle)
 
   onAudioProbeAllowedChanged: {
     if (!root.audioProbeAllowed) {
@@ -583,6 +631,23 @@ Item {
   }
 
   FileView {
+    id: barToggleStateFile
+    path: root.barToggleStatePath
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      root.barToggleAlreadyPlaced = String(text() || "").trim() !== ""
+      root.barToggleStateLoaded = true
+      root.ensureBarToggle()
+    }
+    onLoadFailed: function() {
+      root.barToggleAlreadyPlaced = false
+      root.barToggleStateLoaded = true
+      root.ensureBarToggle()
+    }
+  }
+
+  FileView {
     id: catalogFile
     path: root.catalogPath
     watchChanges: true
@@ -603,7 +668,10 @@ Item {
     function onRawEvent(event) { root.handleHyprlandEvent(event) }
   }
 
-  Component.onCompleted: root.refreshRealScreens()
+  Component.onCompleted: {
+    root.refreshRealScreens()
+    Qt.callLater(root.ensureBarToggle)
+  }
 
   IpcHandler {
     target: "ui-sounds"
