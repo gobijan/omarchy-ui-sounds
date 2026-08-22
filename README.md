@@ -8,11 +8,15 @@ https://github.com/user-attachments/assets/c0058d10-2226-4c89-8c99-6435877340ea
 
 This is an Omarchy **shell plugin**, not a theme and not a standalone daemon. That is the distribution channel Omarchy already has: a git repo with a `manifest.json`, installed by `omarchy plugin add`.
 
+## Install
+
+Get it from the [Omarchy Plugins marketplace](https://omarchyplugins.com/plugin.html?id=gobijan.ui-sounds), or install it directly:
+
 ```bash
 omarchy plugin add https://github.com/gobijan/omarchy-ui-sounds.git --enable
 ```
 
-Update and remove are the same channel:
+Update and remove:
 
 ```bash
 omarchy plugin update gobijan.ui-sounds
