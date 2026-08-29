@@ -28,6 +28,8 @@ SOUND_EXTS = (".wav", ".ogg", ".oga", ".mp3", ".flac", ".opus")
 EVENTS = (
     "openwindow",
     "closewindow",
+    "qconsoleopen",
+    "qconsoleclose",
     "workspace",
     "fullscreen",
     "unfullscreen",
@@ -51,6 +53,8 @@ PACK_SUMMARIES = {
 EVENT_SUMMARIES = {
     "openwindow": "A window opens",
     "closewindow": "A window closes",
+    "qconsoleopen": "The Quake console slides down",
+    "qconsoleclose": "The Quake console retracts",
     "workspace": "Workspace switch",
     "fullscreen": "A window enters fullscreen",
     "unfullscreen": "A window leaves fullscreen",
@@ -191,6 +195,40 @@ def render_tone(
     return samples
 
 
+def render_qconsole(palette: Palette, opening: bool) -> list[float]:
+    """Render a soft rail sweep with a tactile stop at the end of travel."""
+    duration = 0.23 if opening else 0.18
+    total = max(1, int(SAMPLE_RATE * duration))
+    phase = 0.0
+    samples: list[float] = []
+    base = palette.base_hz
+    for i in range(total):
+        progress = i / max(1, total - 1)
+        motion = math.sin(math.pi * progress) ** 0.65
+        if opening:
+            freq = base * (1.9 * (0.28 ** progress))
+            stop_at = 0.72
+            stop_freq = base * 0.17
+        else:
+            freq = base * (0.34 * (5.0 ** progress))
+            stop_at = 0.82
+            stop_freq = base * 1.7
+        phase += 2.0 * math.pi * freq / SAMPLE_RATE
+        rail = math.sin(phase) + math.sin(phase * 2.01) * 0.13 * palette.richness
+        texture = _noise(i, 611 if opening else 977) * 0.055 * palette.richness
+
+        stop_t = progress - stop_at
+        stop = 0.0
+        if stop_t >= 0:
+            stop_seconds = stop_t * duration
+            stop = math.sin(2.0 * math.pi * stop_freq * stop_seconds)
+            stop *= math.exp(-stop_seconds * (32.0 if opening else 48.0))
+
+        level = 0.18 * palette.brightness
+        samples.append((rail * motion + texture * motion + stop * 0.8) * level)
+    return samples
+
+
 def write_wav(path: Path, samples: list[float]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     peak = max((abs(s) for s in samples), default=0.0)
@@ -214,6 +252,8 @@ def recipes(palette: Palette) -> dict[str, list[float]]:
     return {
         "openwindow": render_tone(base * 1.18, 0.055, vol, rich, decay, 0.26),
         "closewindow": render_tone(base * 0.86, 0.05, vol * 0.85, rich, decay + 4, 0.2),
+        "qconsoleopen": render_qconsole(palette, True),
+        "qconsoleclose": render_qconsole(palette, False),
         "workspace": render_tone(base * 1.48, 0.038, vol * 0.62, rich * 0.55, decay + 8, 0.22),
         "fullscreen": render_tone(base * 1.32, 0.06, vol * 0.9, rich, decay, 0.16),
         "unfullscreen": render_tone(base * 0.94, 0.05, vol * 0.78, rich, decay + 2, 0.14),
@@ -296,6 +336,32 @@ def quake_recipes() -> dict[str, list[float]]:
     _mix(closewindow, _quake_noise(0.07, 0.34, 420, 91), 0)
     _mix(closewindow, _quake_tone(210, 0.03, 0.16, 40.0), int(LOFI_RATE * 0.008))
 
+    qconsoleopen = []
+    n = int(LOFI_RATE * 0.23)
+    phase = 0.0
+    for i in range(n):
+        progress = i / max(1, n - 1)
+        freq = 1250.0 * (0.075 ** progress)
+        phase += 2.0 * math.pi * freq / LOFI_RATE
+        motion = math.sin(math.pi * progress) ** 0.62
+        rail = 0.68 * (1.0 if math.sin(phase) >= 0 else -1.0)
+        rail += 0.18 * math.sin(phase * 0.51)
+        qconsoleopen.append((rail + 0.12 * _noise(i, 611)) * motion * 0.26)
+    _mix(qconsoleopen, _quake_tone(82, 0.085, 0.4, 25.0, duty=0.5), int(LOFI_RATE * 0.15))
+
+    qconsoleclose = []
+    n = int(LOFI_RATE * 0.18)
+    phase = 0.0
+    for i in range(n):
+        progress = i / max(1, n - 1)
+        freq = 105.0 * (12.0 ** progress)
+        phase += 2.0 * math.pi * freq / LOFI_RATE
+        motion = math.sin(math.pi * progress) ** 0.68
+        rail = 0.7 * (1.0 if math.sin(phase) >= 0 else -1.0)
+        rail += 0.14 * math.sin(phase * 1.99)
+        qconsoleclose.append((rail + 0.1 * _noise(i, 977)) * motion * 0.23)
+    _mix(qconsoleclose, _quake_tone(1480, 0.035, 0.25, 52.0, duty=0.25), int(LOFI_RATE * 0.145))
+
     workspace = []
     n = int(LOFI_RATE * 0.09)
     for i in range(n):
@@ -346,6 +412,8 @@ def quake_recipes() -> dict[str, list[float]]:
     return {
         "openwindow": _quake_finish(openwindow),
         "closewindow": _quake_finish(closewindow),
+        "qconsoleopen": _quake_finish(qconsoleopen),
+        "qconsoleclose": _quake_finish(qconsoleclose),
         "workspace": _quake_finish(workspace),
         "fullscreen": _quake_finish(fullscreen),
         "unfullscreen": _quake_finish(unfullscreen),

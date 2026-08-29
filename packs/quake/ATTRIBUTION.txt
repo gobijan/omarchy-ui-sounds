@@ -20,6 +20,10 @@ Mapping (LibreQuake path -> event)
   sound/misc/talk.wav       urgent         Silja Midsummer / MissLavender
   sound/weapons/pkup.wav    bell           MarkieMusic
 
+The qconsoleopen and qconsoleclose additions are original low-fidelity
+synthesis in generate.py, licensed under this plugin's MIT license. They do
+not contain LibreQuake or id Software samples.
+
 Copyright (c) 2019-2023 Contributors to the LibreQuake project.
 All rights reserved.
 

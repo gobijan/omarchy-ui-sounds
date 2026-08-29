@@ -1,6 +1,6 @@
 # UI Sounds
 
-Theme-aware window and workspace clicks for [Omarchy](https://omarchy.org/).
+Theme-aware window, workspace, and Quake-console sounds for [Omarchy](https://omarchy.org/).
 
 ![UI Sounds](preview.png)
 
@@ -52,6 +52,8 @@ your-theme/
   sounds/
     openwindow.wav
     closewindow.wav
+    qconsoleopen.wav
+    qconsoleclose.wav
     workspace.wav
     fullscreen.wav
     unfullscreen.wav
@@ -123,6 +125,7 @@ Events you can set with `event.<name>`:
 |---|---|
 | `openwindow` | A window opens |
 | `closewindow` | A window closes |
+| `qconsoleopen` / `qconsoleclose` | Omarchy's `special:scratchpad` console slides down or retracts. The initial terminal window does not also trigger `openwindow`. |
 | `workspace` | You switch workspaces |
 | `fullscreen` / `unfullscreen` | A window enters or leaves fullscreen |
 | `float` / `unfloat` | A window is floated or tiled |

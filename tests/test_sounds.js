@@ -42,6 +42,32 @@ assert.equal(
   "openwindow"
 )
 
+const qconsole = Sounds.newIgnoredWindowTracker()
+assert.equal(
+  Sounds.soundForEvent(event("activespecialv2", "-99,special:scratchpad,DP-1"), qconsole),
+  "qconsoleopen"
+)
+assert.equal(
+  Sounds.soundForEvent(event("activespecial", "special:scratchpad,DP-1"), qconsole),
+  ""
+)
+assert.equal(
+  Sounds.soundForEvent(event("openwindow", "0x4,special:scratchpad,foot,Terminal"), qconsole),
+  ""
+)
+assert.equal(
+  Sounds.soundForEvent(event("activespecialv2", ",,DP-1"), qconsole),
+  "qconsoleclose"
+)
+assert.equal(Sounds.soundForEvent(event("activespecial", ",DP-1"), qconsole), "")
+
+const otherSpecial = Sounds.newIgnoredWindowTracker()
+assert.equal(
+  Sounds.soundForEvent(event("activespecialv2", "-98,special:magic,DP-1"), otherSpecial),
+  ""
+)
+assert.equal(Sounds.soundForEvent(event("activespecialv2", ",,DP-1"), otherSpecial), "")
+
 const healthyState = {
   configLoaded: true,
   enabled: true,
@@ -68,8 +94,10 @@ assert.equal(Sounds.hasAllSounds({ ...completeIndex, openwindow: "" }, Sounds.EV
 const playerModel = Sounds.playerModel(Sounds.EVENT_NAMES)
 assert.equal(playerModel.filter(name => name === "openwindow").length, 4)
 assert.equal(playerModel.filter(name => name === "closewindow").length, 4)
+assert.equal(playerModel.filter(name => name === "qconsoleopen").length, 2)
+assert.equal(playerModel.filter(name => name === "qconsoleclose").length, 2)
 assert.equal(playerModel.filter(name => name === "workspace").length, 1)
-assert.equal(playerModel.length, 16)
+assert.equal(playerModel.length, 20)
 
 assert.equal(Sounds.canPlay(healthyState), true)
 assert.equal(Sounds.canPlay({ ...healthyState, realScreenAvailable: true, screens: [] }), true)

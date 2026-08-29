@@ -17,6 +17,8 @@ var STATEFUL_EVENTS = {
 var EVENT_NAMES = [
   "openwindow",
   "closewindow",
+  "qconsoleopen",
+  "qconsoleclose",
   "workspace",
   "fullscreen",
   "unfullscreen",
@@ -27,12 +29,14 @@ var EVENT_NAMES = [
   "bell"
 ]
 
-// The Quake open/close samples are 320 ms, while the default event burst
-// interval permits a new hit every 100 ms. Four ready voices keep those tactile
-// events fully retriggerable without replaying a busy effect.
+// Some shipped effects outlast the default 100 ms burst interval. Extra ready
+// voices keep rapid window actions and console toggles tactile without
+// restarting a sample that is already playing.
 var EVENT_VOICES = {
   openwindow: 4,
-  closewindow: 4
+  closewindow: 4,
+  qconsoleopen: 2,
+  qconsoleclose: 2
 }
 
 var IGNORE_CLASSES = {
@@ -66,6 +70,8 @@ var PACK_SUMMARIES = {
 var EVENT_SUMMARIES = {
   openwindow: "A window opens",
   closewindow: "A window closes",
+  qconsoleopen: "The Quake console slides down",
+  qconsoleclose: "The Quake console retracts",
   workspace: "Workspace switch",
   fullscreen: "A window enters fullscreen",
   unfullscreen: "A window leaves fullscreen",
@@ -344,7 +350,7 @@ function formatStatus(state) {
 function formatHelp(state) {
   var pack = currentPackName(state.pack)
   var lines = [
-    "ui-sounds — window and workspace sound effects",
+    "ui-sounds — desktop interaction sound effects",
     "",
     "Usage:",
     "  omarchy-shell ui-sounds <command> [args]",
@@ -440,7 +446,7 @@ function canPlay(state) {
 }
 
 function newIgnoredWindowTracker() {
-  return { addresses: {}, order: [] }
+  return { addresses: {}, order: [], activeSpecials: {} }
 }
 
 function normalizedAddress(address) {
@@ -530,18 +536,75 @@ function eventAddress(name, event) {
   return ""
 }
 
+function normalizedSpecialWorkspace(name) {
+  var value = String(name || "").trim().toLowerCase()
+  if (value.indexOf("special:") === 0)
+    value = value.slice(8)
+  return value
+}
+
+function specialWorkspaceChange(event) {
+  var name = String(event && event.name ? event.name : "")
+  if (name === "activespecialv2") {
+    var v2 = eventParts(event, 3)
+    return {
+      workspace: normalizedSpecialWorkspace(v2[1]),
+      monitor: String(v2[2] || "").trim().toLowerCase()
+    }
+  }
+  if (name === "activespecial") {
+    var legacy = eventParts(event, 2)
+    return {
+      workspace: normalizedSpecialWorkspace(legacy[0]),
+      monitor: String(legacy[1] || "").trim().toLowerCase()
+    }
+  }
+  return null
+}
+
+function soundForSpecialWorkspace(event, tracker) {
+  var change = specialWorkspaceChange(event)
+  if (!change || !tracker)
+    return ""
+  if (!tracker.activeSpecials)
+    tracker.activeSpecials = {}
+  var monitor = change.monitor || "__default__"
+  var previous = normalizedSpecialWorkspace(tracker.activeSpecials[monitor])
+  var next = change.workspace
+  if (next)
+    tracker.activeSpecials[monitor] = next
+  else
+    delete tracker.activeSpecials[monitor]
+
+  // Hyprland may emit both the legacy and v2 forms. Remembering the active
+  // special workspace per monitor makes the second form a harmless duplicate.
+  if (next === "scratchpad" && previous !== "scratchpad")
+    return "qconsoleopen"
+  if (previous === "scratchpad" && next !== "scratchpad")
+    return "qconsoleclose"
+  return ""
+}
+
 function soundForEvent(event, ignoredWindows) {
   var name = String(event && event.name ? event.name : "")
   var data = String(event && event.data ? event.data : "")
   pruneIgnoredWindows(ignoredWindows, Date.now())
+  if (name === "activespecial" || name === "activespecialv2")
+    return soundForSpecialWorkspace(event, ignoredWindows)
   if (name === "openwindow") {
     var parts = eventParts(event, 4)
     var address = String(parts[0] || "")
+    var workspace = normalizedSpecialWorkspace(parts[1])
     var klass = String(parts[2] || "")
     if (isIgnoredClass(klass)) {
       rememberIgnoredWindow(ignoredWindows, address)
       return ""
     }
+    // The first reveal seeds the console and maps its terminal after the
+    // activespecial event. Avoid an ordinary open-window sound on top of the
+    // dedicated slide-down effect.
+    if (workspace === "scratchpad")
+      return ""
     forgetIgnoredWindow(ignoredWindows, address)
     return "openwindow"
   }
