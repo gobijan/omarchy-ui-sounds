@@ -643,9 +643,3 @@ function candidatePaths(home, theme, event) {
   }
   return paths
 }
-
-function fileUrl(path) {
-  if (!path)
-    return ""
-  return "file://" + path
-}

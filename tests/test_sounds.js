@@ -119,7 +119,7 @@ assert.equal(Sounds.canPlay({ ...healthyState, requireReady: true, effectReady: 
 
 // Lifecycle guards are intentionally checked in the QML source because the
 // repository has no QML test harness. Together with canPlay(), these assertions
-// prevent disabled playback from retaining a handler, player, or bound source.
+// prevent disabled playback from retaining a handler or playback process.
 const service = fs.readFileSync(servicePath, "utf8")
 assert.match(service, /readonly property bool playbackEnabled: configLoaded && config\.enabled === true/)
 assert.match(service, /readonly property bool muted: root\.configLoaded && !root\.playbackEnabled/)
@@ -128,17 +128,22 @@ assert.match(service, /Sounds\.placeCenterToggle/)
 assert.match(service, /readonly property bool eventListeningEnabled: root\.playbackEnabled && root\.realScreensAvailable/)
 assert.match(service, /Connections\s*{\s*target: Hyprland\s*enabled: root\.eventListeningEnabled/s)
 assert.match(service, /Instantiator\s*{\s*id: players\s*active: root\.playersActive/s)
-assert.match(service, /SoundEffect\s*{[\s\S]*?source: root\.playersActive \?/)
+assert.match(service, /delegate: Process\s*{[\s\S]*?property bool deliberateStop: false/)
 assert.match(service, /readonly property bool playbackReady: Sounds\.canPlay/)
-assert.match(service, /if \(root\.canPlay\(event, fx\)\)/)
-assert.match(service, /fx\.status === SoundEffect\.Ready && !fx\.playing/)
-assert.match(service, /if \(root\.playersActive\)\s*root\.enterAudioCooldown\("sound effect error"\)/)
+assert.match(service, /if \(root\.canPlay\(event, player\)\)/)
+assert.match(service, /return !!player && !player\.running/)
+assert.match(service, /"\/usr\/bin\/pw-play"/)
+assert.match(service, /"--latency", "20ms"/)
+assert.match(service, /"--media-role", "Notification"/)
+assert.match(service, /root\.enterAudioCooldown\("pw-play exited with code " \+ exitCode\)/)
 assert.match(service, /if \(firstFailure\) \{[\s\S]*?audioCooldownTimer\.restart\(\)/)
 assert.match(service, /generatingTheme === root\.themeName/)
 assert.match(service, /generatingPack === \(root\.config\.pack \|\| ""\)/)
 assert.doesNotMatch(service, /root\.canPlay\(name, null\)/)
 assert.doesNotMatch(service, /id: playerLoader/)
 assert.doesNotMatch(service, /requireReady:\s*false/)
+assert.doesNotMatch(service, /QtMultimedia/)
+assert.doesNotMatch(service, /SoundEffect/)
 
 const emptyLayout = { left: [], center: [], right: [] }
 const fromEmpty = Sounds.placeCenterToggle(emptyLayout, "gobijan.ui-sounds")

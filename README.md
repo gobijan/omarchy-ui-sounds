@@ -23,7 +23,7 @@ omarchy plugin update gobijan.ui-sounds
 omarchy plugin remove gobijan.ui-sounds
 ```
 
-The plugin is a `service` plus a center-bar mute toggle. Enabling it is enough. It listens to Hyprland events inside `omarchy-shell` and plays short `SoundEffect`s, so there is no extra systemd unit.
+The plugin is a `service` plus a center-bar mute toggle. Enabling it is enough. It listens to Hyprland events inside `omarchy-shell` and plays short effects through PipeWire's `pw-play`, so there is no extra systemd unit.
 
 The space-invader toggle sits with the other center-bar toggles (Do Not Disturb, Night Light, Stay Awake). Hover the middle of the bar to peek at it while sounds are on; while muted it stays visible with a slash through it, the same way Silence Notifications does. Click to mute or unmute. Move it with:
 
@@ -100,7 +100,7 @@ event.bell=false
 | `event.<name>` | on, except `urgent` and `bell` | Per-event mute. `false` skips that event even if a file exists. |
 
 Setting `enabled=false` here makes the loaded service fully inert: it disconnects
-from Hyprland and destroys its audio player bank. Omarchy's plugin registry has a
+from Hyprland and stops its audio processes. Omarchy's plugin registry has a
 separate meaning for an `"enabled": false` field on an entry in
 `~/.config/omarchy/shell.json`: that field does **not** unload a service. If the
 plugin id is present in `plugins[]`, Omarchy considers the plugin loaded. Use
@@ -113,11 +113,10 @@ has no real output (a screen must have a non-empty, non-`FALLBACK` name and
 non-zero size).
 Compositor chrome such as `org.omarchy.screensaver`, lock windows, and desktop
 portal pickers is ignored on both window-open and matching window-close events.
-When the compositor and default audio sink are healthy, the short effects stay
-decoded in a low-latency player bank so window events play immediately and can
-overlap. Disabling playback, locking/idling, losing outputs, or an audio failure
-destroys the entire bank; failures start a 10-second backoff before probing the
-default sink again.
+When the compositor and default audio sink are healthy, a small process pool lets
+short effects overlap and routes each one through the current PipeWire default.
+Disabling playback, locking/idling, losing outputs, or an audio failure stops the
+pool; failures start a 10-second backoff before probing the default sink again.
 
 Events you can set with `event.<name>`:
 
@@ -195,7 +194,7 @@ node tests/test_sounds.js
 
 ## Requirements
 
-Omarchy with `omarchy-shell` (Quickshell) and `qt6-multimedia`. Both ship with current Omarchy.
+Omarchy with `omarchy-shell` (Quickshell) and PipeWire's `pw-play`. Both ship with current Omarchy.
 
 ## License
 

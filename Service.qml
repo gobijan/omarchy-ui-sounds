@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtMultimedia
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
@@ -41,7 +40,6 @@ Item {
   property bool startupGraceComplete: false
   property bool audioCoolingDown: false
   property bool audioSinkAvailable: false
-  property int readyPlayerCount: 0
   property var ignoredWindows: Sounds.newIgnoredWindowTracker()
   property int ignoredWindowCount: 0
 
@@ -76,7 +74,6 @@ Item {
     && Sounds.hasAllSounds(root.soundIndex, root.eventNames)
   readonly property bool playersReady: root.playersActive
     && players.count === root.playerModel.length
-    && root.readyPlayerCount === root.playerModel.length
   readonly property bool playbackReady: Sounds.canPlay({
     configLoaded: root.configLoaded,
     enabled: root.playbackEnabled,
@@ -92,7 +89,7 @@ Item {
   })
 
   // Stay subscribed while playback is enabled so ignored chrome is recorded
-  // even when the player bank is down; canPlay() still drops the samples.
+  // even when the process pool is down; canPlay() still drops the samples.
   readonly property bool eventListeningEnabled: root.playbackEnabled && root.realScreensAvailable
 
   function applyConfig(text) {
@@ -104,12 +101,12 @@ Item {
 
     var packChanged = (next.pack || "") !== previousPack
     if (packChanged) {
-      root.stopAndUnloadPlayers()
+      root.stopPlayers()
       root.soundIndex = ({})
     }
 
     if (!next.enabled) {
-      root.stopAndUnloadPlayers()
+      root.stopPlayers()
       return
     }
 
@@ -124,7 +121,7 @@ Item {
         root.scheduleGenerate(name, false)
       return
     }
-    root.stopAndUnloadPlayers()
+    root.stopPlayers()
     root.soundIndex = ({})
     root.themeName = name
     root.scheduleGenerate(name, false)
@@ -301,42 +298,33 @@ Item {
     return root.soundIndex[event] ? String(root.soundIndex[event]) : ""
   }
 
-  function canPlay(event, fx) {
+  function canPlay(event, player) {
     if (!root.playbackReady)
       return false
     if (root.config.events && root.config.events[event] === false)
       return false
-    return !!fx && fx.status === SoundEffect.Ready && !fx.playing
+    return !!player && !player.running
   }
 
-  function stopAndUnloadPlayers() {
-    playerWarmupTimeout.stop()
+  function stopPlayers() {
     for (var i = 0; i < players.count; i++) {
-      var fx = players.objectAt(i) as SoundEffect
-      if (!fx)
+      var player = players.objectAt(i)
+      if (!player)
         continue
-      if (fx.playing)
-        fx.stop()
-      fx.source = ""
+      player.deliberateStop = true
+      if (player.running)
+        player.running = false
     }
-    root.readyPlayerCount = 0
   }
 
-  function refreshPlayerReadiness() {
-    if (!root.playersActive) {
-      root.readyPlayerCount = 0
-      playerWarmupTimeout.stop()
-      return
-    }
-    var ready = 0
-    for (var i = 0; i < players.count; i++) {
-      var fx = players.objectAt(i) as SoundEffect
-      if (fx && fx.status === SoundEffect.Ready)
-        ready += 1
-    }
-    root.readyPlayerCount = ready
-    if (ready === root.playerModel.length)
-      playerWarmupTimeout.stop()
+  function playerCommand(path) {
+    return [
+      "/usr/bin/pw-play",
+      "--latency", "20ms",
+      "--volume", String(root.volume),
+      "--media-role", "Notification",
+      path
+    ]
   }
 
   function probeAudioSink() {
@@ -355,15 +343,14 @@ Item {
       console.warn("ui-sounds: audio playback failed; backing off for 10 seconds (" + reason + ")")
       audioCooldownTimer.restart()
     }
-    root.stopAndUnloadPlayers()
+    root.stopPlayers()
   }
 
   function availablePlayer(event) {
     for (var i = 0; i < players.count; i++) {
-      var fx = players.objectAt(i) as SoundEffect
-      if (root.playerModel[i] === event && fx
-          && fx.status === SoundEffect.Ready && !fx.playing)
-        return fx
+      var player = players.objectAt(i)
+      if (player && player.eventName === event && !player.running)
+        return player
     }
     return null
   }
@@ -373,9 +360,11 @@ Item {
     var index = root.eventNames.indexOf(event)
     if (index < 0)
       return ""
-    var fx = root.availablePlayer(event)
-    if (root.canPlay(event, fx)) {
-      fx.play()
+    var player = root.availablePlayer(event)
+    if (root.canPlay(event, player)) {
+      player.deliberateStop = false
+      player.command = root.playerCommand(root.soundPath(event))
+      player.running = true
       return event
     }
     if (!root.playbackEnabled)
@@ -384,7 +373,7 @@ Item {
       return "muted"
     if (!root.playersReady)
       return "loading"
-    if (!fx)
+    if (!player)
       return "busy"
     return "unavailable"
   }
@@ -397,7 +386,7 @@ Item {
     var name = Sounds.soundForEvent(event, root.ignoredWindows)
     root.ignoredWindowCount = Sounds.ignoredWindowCount(root.ignoredWindows)
     if (root.ignoredWindowCount > previousIgnoredCount)
-      root.stopAndUnloadPlayers()
+      root.stopPlayers()
     if (!name)
       return
 
@@ -430,7 +419,7 @@ Item {
       audioSinkAvailable: root.audioSinkAvailable,
       playersActive: root.playersActive,
       playersReady: root.playersReady,
-      readyPlayers: root.readyPlayerCount,
+      readyPlayers: root.playersReady ? players.count : 0,
       playerCount: players.count,
       packs: root.knownPacks(),
       events: root.eventNames,
@@ -450,7 +439,7 @@ Item {
       root.startupGraceComplete = false
       root.audioCoolingDown = false
       root.audioSinkAvailable = false
-      root.stopAndUnloadPlayers()
+      root.stopPlayers()
       return
     }
     root.armStartupGrace()
@@ -466,21 +455,13 @@ Item {
       if (audioProbeProcess.running)
         audioProbeProcess.running = false
       root.audioSinkAvailable = false
-      root.stopAndUnloadPlayers()
+      root.stopPlayers()
       return
     }
     Qt.callLater(root.probeAudioSink)
   }
 
-  onPlayersActiveChanged: {
-    root.readyPlayerCount = 0
-    if (!root.playersActive) {
-      playerWarmupTimeout.stop()
-      return
-    }
-    playerWarmupTimeout.restart()
-    Qt.callLater(root.refreshPlayerReadiness)
-  }
+  onPlayersActiveChanged: if (!root.playersActive) root.stopPlayers()
 
   onSessionLockedChanged: {
     if (root.sessionLocked)
@@ -525,44 +506,28 @@ Item {
     onTriggered: root.enterAudioCooldown("default audio sink probe timed out")
   }
 
-  Timer {
-    id: playerWarmupTimeout
-    interval: 5000
-    repeat: false
-    onTriggered: root.enterAudioCooldown("preloaded sounds did not become ready")
-  }
-
   Instantiator {
     id: players
     active: root.playersActive
     asynchronous: false
     model: root.playerModel
 
-    delegate: SoundEffect {
+    delegate: Process {
       required property string modelData
       readonly property string eventName: modelData
-      source: root.playersActive ? Sounds.fileUrl(root.soundPath(eventName)) : ""
-      volume: root.volume
+      property bool deliberateStop: false
 
-      onStatusChanged: {
-        if (status === SoundEffect.Error) {
-          if (root.playersActive)
-            root.enterAudioCooldown("sound effect error")
-        } else {
-          root.refreshPlayerReadiness()
-        }
+      onExited: function(exitCode) {
+        if (exitCode !== 0 && root.playersActive && !deliberateStop)
+          root.enterAudioCooldown("pw-play exited with code " + exitCode)
       }
 
-      Component.onCompleted: Qt.callLater(root.refreshPlayerReadiness)
       Component.onDestruction: {
-        if (playing)
-          stop()
-        source = ""
+        deliberateStop = true
+        if (running)
+          running = false
       }
     }
-
-    onObjectAdded: function(index, object) { Qt.callLater(root.refreshPlayerReadiness) }
-    onObjectRemoved: function(index, object) { Qt.callLater(root.refreshPlayerReadiness) }
   }
 
   Process {
