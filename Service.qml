@@ -34,8 +34,6 @@ Item {
   property string generatingTheme: ""
   property string generatingPack: ""
   property bool generatingForce: false
-  property var lastPlayed: ({})
-
   property bool realScreensAvailable: false
   property bool startupGraceComplete: false
   property bool audioCoolingDown: false
@@ -390,17 +388,7 @@ Item {
     if (!name)
       return
 
-    var now = Date.now()
-    var last = root.lastPlayed[name] || 0
-    if (now - last < (root.config.burst_ms || 0))
-      return
-    if (root.play(name) === name) {
-      var next = {}
-      for (var key in root.lastPlayed)
-        next[key] = root.lastPlayed[key]
-      next[name] = now
-      root.lastPlayed = next
-    }
+    root.play(name)
   }
 
   function statusJson() {

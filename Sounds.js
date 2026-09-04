@@ -29,15 +29,10 @@ var EVENT_NAMES = [
   "bell"
 ]
 
-// Some shipped effects outlast the default 100 ms burst interval. Extra ready
-// voices keep rapid window actions and console toggles tactile without
-// restarting a sample that is already playing.
-var EVENT_VOICES = {
-  openwindow: 4,
-  closewindow: 4,
-  qconsoleopen: 2,
-  qconsoleclose: 2
-}
+// Keep every interaction fully retriggerable while earlier samples finish.
+// Four voices cover even the longest shipped effects at rapid key-repeat speed
+// without allowing an unbounded number of playback processes.
+var VOICES_PER_EVENT = 4
 
 var IGNORE_CLASSES = {
   "hyprland-preview-share-picker": true,
@@ -86,7 +81,6 @@ var DEFAULT_CONFIG_TEXT = [
   "enabled=true",
   "volume=0.45",
   "startup_grace_ms=600",
-  "burst_ms=100",
   "pack=",
   "event.urgent=false",
   "event.bell=false",
@@ -98,7 +92,6 @@ function defaultConfig() {
     enabled: true,
     volume: 0.45,
     startup_grace_ms: 600,
-    burst_ms: 100,
     pack: "",
     events: {
       urgent: false,
@@ -127,8 +120,6 @@ function parseConfig(text) {
       cfg.volume = Math.max(0, Math.min(1, Number(value)))
     else if (key === "startup_grace_ms")
       cfg.startup_grace_ms = Math.max(0, parseInt(value, 10) || 0)
-    else if (key === "burst_ms")
-      cfg.burst_ms = Math.max(0, parseInt(value, 10) || 0)
     else if (key === "pack")
       cfg.pack = value.replace(/[^a-z0-9_-]/gi, "").toLowerCase()
     else if (key.indexOf("event.") === 0)
@@ -417,8 +408,7 @@ function playerModel(eventNames) {
   var model = []
   for (var i = 0; i < events.length; i++) {
     var event = String(events[i] || "")
-    var voices = Math.max(1, Number(EVENT_VOICES[event]) || 1)
-    for (var voice = 0; voice < voices; voice++)
+    for (var voice = 0; voice < VOICES_PER_EVENT; voice++)
       model.push(event)
   }
   return model

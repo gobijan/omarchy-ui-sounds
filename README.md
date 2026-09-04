@@ -84,7 +84,6 @@ If a theme has no `sounds/` directory, the plugin synthesizes a pack from the th
 enabled=true
 volume=0.45
 startup_grace_ms=600
-burst_ms=100
 pack=
 event.urgent=false
 event.bell=false
@@ -95,7 +94,6 @@ event.bell=false
 | `enabled` | `true` | Master on/off. The center-bar toggle, the Toggle menu, and `omarchy-shell ui-sounds toggle` flip this. |
 | `volume` | `0.45` | Playback level from `0` (silent) to `1` (full). This is independent of the system output slider. `0.45` is present without jumping over music. |
 | `startup_grace_ms` | `600` | Milliseconds after the plugin starts during which no sounds play. Covers the burst of Hyprland events when the shell comes up, so login does not machine-gun clicks. |
-| `burst_ms` | `100` | Per-event cooldown. If the same event fires twice inside this window (compositor double-fires, session restore), only the first click plays. Two windows you open farther apart still get two sounds. |
 | `pack` | empty | Which sample set to use after theme overlays. Empty / `theme` / `auto` follows the Omarchy theme palette. Named packs live in `packs/<name>/`. |
 | `event.<name>` | on, except `urgent` and `bell` | Per-event mute. `false` skips that event even if a file exists. |
 
@@ -113,8 +111,9 @@ has no real output (a screen must have a non-empty, non-`FALLBACK` name and
 non-zero size).
 Compositor chrome such as `org.omarchy.screensaver`, lock windows, and desktop
 portal pickers is ignored on both window-open and matching window-close events.
-When the compositor and default audio sink are healthy, a small process pool lets
-short effects overlap and routes each one through the current PipeWire default.
+When the compositor and default audio sink are healthy, four voices per event cue
+rapid interactions immediately, let their effects overlap, and route them through
+the current PipeWire default.
 Disabling playback, locking/idling, losing outputs, or an audio failure stops the
 pool; failures start a 10-second backoff before probing the default sink again.
 
